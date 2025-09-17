@@ -18,8 +18,15 @@ if [[ -f "$LICENSE_PATH" ]]; then
   sleep 5
 fi
 
-su - tigergraph -c "echo -e '${PASS}\\n${PASS}' | passwd tigergraph || true"
-su - tigergraph -c "gsql 'create graph $GRAPH()'" || true
-su - tigergraph -c "gsql -g $GRAPH /opt/gsql/schema.gsql"
-su - tigergraph -c "gsql -g $GRAPH /opt/gsql/loading_jobs.gsql"
-su - tigergraph -c "gsql -g $GRAPH /opt/gsql/queries.gsql"
+su - tigergraph -c "echo -e '${PASS}\n${PASS}' | passwd tigergraph || true"
+su - tigergraph -c "gsql 'CREATE GRAPH ${GRAPH}()'" || true
+
+TMP_SCHEMA=$(mktemp)
+TMP_QUERIES=$(mktemp)
+sed "s|\$TG_GRAPH|${GRAPH}|g" /opt/gsql/schema.gsql > "$TMP_SCHEMA"
+sed "s|\$TG_GRAPH|${GRAPH}|g" /opt/gsql/queries.gsql > "$TMP_QUERIES"
+
+su - tigergraph -c "gsql $TMP_SCHEMA" || true
+su - tigergraph -c "gsql $TMP_QUERIES" || true
+
+rm -f "$TMP_SCHEMA" "$TMP_QUERIES"
