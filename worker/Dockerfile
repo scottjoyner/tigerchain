@@ -9,8 +9,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-ENV PYTHONPATH=/app
-
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+COPY ingest_docs.py .
+COPY sample_docs sample_docs
+CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]

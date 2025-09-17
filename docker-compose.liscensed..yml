@@ -7,36 +7,19 @@ services:
       - PASSWORD=${TG_PASSWORD}
       - TG_PASSPHRASE=${TG_PASSWORD}
     ports:
-      - "${TG_REST_PORT}:9000"     # RESTPP
-      - "${TG_GSQL_PORT}:14240"    # GSQL/Studio
+      - "${TG_REST_PORT}:9000"
+      - "${TG_GSQL_PORT}:14240"
     volumes:
       - tgdata:/home/tigergraph/data
       - ./gsql:/opt/gsql
       - ./scripts:/opt/scripts
+      - ${TG_LICENSE_FILE}:/home/tigergraph/enterprise-license.txt:ro
     healthcheck:
       test: ["CMD", "/opt/scripts/wait_for_tg.sh"]
       interval: 15s
       timeout: 10s
       retries: 30
     networks: [tgnet]
-
-  tigergraph-bootstrap:
-    image: tigergraph/tigergraph:latest
-    depends_on:
-      tigergraph:
-        condition: service_healthy
-    entrypoint: ["/bin/bash", "/opt/scripts/init_tigergraph.sh"]
-    environment:
-      - USER=${TG_USER}
-      - PASSWORD=${TG_PASSWORD}
-      - TG_GRAPH=${TG_GRAPH}
-      - TG_TOKEN_TTL=${TG_TOKEN_TTL}
-    volumes:
-      - ./gsql:/opt/gsql
-      - ./scripts:/opt/scripts
-      - ${TG_LICENSE_FILE}:/home/tigergraph/enterprise-license.txt:ro
-    networks: [tgnet]
-    restart: "no"
 
   minio:
     image: quay.io/minio/minio:latest
@@ -70,9 +53,8 @@ services:
     volumes:
       - ./scripts:/opt/scripts
     networks: [tgnet]
-    restart: "no"
 
-  rag-api:
+  worker:
     build:
       context: ./worker
       dockerfile: Dockerfile
@@ -86,70 +68,23 @@ services:
       - EMBED_MODEL=${EMBED_MODEL}
       - EMBED_DIM=${EMBED_DIM}
       - BATCH_SIZE=${BATCH_SIZE}
-      - CHUNK_TOKENS=${CHUNK_TOKENS}
-      - CHUNK_OVERLAP=${CHUNK_OVERLAP}
+      - MAX_TOKENS=${MAX_TOKENS}
       - MINIO_ENDPOINT=http://minio:9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=${MINIO_BUCKET}
-      - EMBED_MODEL=${EMBED_MODEL}
-      - EMBED_DEVICE=${EMBED_DEVICE}
-      - EMBED_BATCH_SIZE=${EMBED_BATCH_SIZE}
-      - CHUNK_SIZE=${CHUNK_SIZE}
-      - CHUNK_OVERLAP=${CHUNK_OVERLAP}
-      - TOP_K=${TOP_K}
-      - LLM_PROVIDER=${LLM_PROVIDER}
-      - LLM_MODEL=${LLM_MODEL}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_API_BASE=${OPENAI_API_BASE}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
-      - VLLM_API_BASE=${VLLM_API_BASE}
-      - STORAGE_BASE_PATH=/tmp/tigerchain
-    ports:
-      - "${API_PORT}:8000"
     volumes:
       - ./worker/sample_docs:/app/sample_docs:ro
-    ports:
-      - "${API_PORT}:8000"
     depends_on:
-      tigergraph-bootstrap:
-        condition: service_completed_successfully
+      tigergraph:
+        condition: service_healthy
       minio-setup:
         condition: service_completed_successfully
-    networks: [tgnet]
-
-  vllm:
-    image: vllm/vllm-openai:latest
-    profiles: ["llm"]
-    environment:
-      - MODEL_NAME=${VLLM_MODEL}
-    command: ["--model", "${VLLM_MODEL}"]
-    ports:
-      - "${VLLM_PORT}:8000"
-    volumes:
-      - vllm-cache:/root/.cache/huggingface
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities: [gpu]
-    networks: [tgnet]
-
-  ollama:
-    image: ollama/ollama:latest
-    profiles: ["llm"]
-    ports:
-      - "${OLLAMA_PORT}:11434"
-    volumes:
-      - ollama-data:/root/.ollama
     networks: [tgnet]
 
 volumes:
   tgdata:
   miniodata:
-  vllm-cache:
-  ollama-data:
 
 networks:
   tgnet:

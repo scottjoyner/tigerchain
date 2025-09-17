@@ -1,22 +1,38 @@
 USE GRAPH $TG_GRAPH
 
-DROP JOB doc_graph_schema IF EXISTS
+# Document-level with aggregated doc embedding
+CREATE VERTEX Document (
+  PRIMARY_ID id STRING,
+  uri STRING,
+  http_url STRING,
+  title STRING,
+  text STRING,
+  pages INT,
+  doc_embedding LIST<FLOAT>   # NEW
+) WITH PRIMARY_ID_AS_ATTRIBUTE="TRUE"
 
-CREATE SCHEMA_CHANGE JOB doc_graph_schema FOR GRAPH $TG_GRAPH {
-  ADD VERTEX Document (
-    PRIMARY_ID id STRING,
-    doc_id STRING,
-    chunk_id INT,
-    title STRING,
-    source STRING,
-    uri STRING,
-    http_url STRING,
-    content STRING,
-    metadata STRING,
-    embedding LIST<FLOAT>,
-    created_at DATETIME
-  ) WITH STATS="OUTDEGREE_BY_EDGETYPE", PRIMARY_ID_AS_ATTRIBUTE="true";
-}
+# Page-level aggregated embedding (one per page)
+CREATE VERTEX PageLevel (
+  PRIMARY_ID plid STRING,     # e.g., "<doc_id>#p<index>"
+  doc_id STRING,
+  page_index INT,
+  embedding LIST<FLOAT>
+) WITH PRIMARY_ID_AS_ATTRIBUTE="TRUE"
 
-RUN SCHEMA_CHANGE JOB doc_graph_schema
-DROP JOB doc_graph_schema
+# Chunk-level embeddings (potentially multiple per page)
+CREATE VERTEX PageChunk (
+  PRIMARY_ID pid STRING,      # e.g., "<doc_id>#p<index>#c<chunk>"
+  doc_id STRING,
+  page_index INT,
+  chunk_index INT,
+  tokens INT,
+  text STRING,
+  embedding LIST<FLOAT>
+) WITH PRIMARY_ID_AS_ATTRIBUTE="TRUE"
+
+# Similarity between page-level vertices (weighted)
+CREATE DIRECTED EDGE PageSim (FROM PageLevel, TO PageLevel, weight FLOAT)
+
+# Edges to connect hierarchy
+CREATE DIRECTED EDGE PAGELEVEL_OF (FROM PageLevel, TO Document)
+CREATE DIRECTED EDGE CHUNK_OF (FROM PageChunk, TO PageLevel)
