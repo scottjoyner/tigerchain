@@ -1,10 +1,38 @@
 USE GRAPH DocGraph
 
-CREATE DATA SOURCE DocCSVSource FOR LOCAL FILE "docs.csv";
+# Document-level with aggregated doc embedding
+CREATE VERTEX Document (
+  PRIMARY_ID id STRING,
+  uri STRING,
+  http_url STRING,
+  title STRING,
+  text STRING,
+  pages INT,
+  doc_embedding LIST<FLOAT>   # NEW
+) WITH PRIMARY_ID_AS_ATTRIBUTE="TRUE"
 
-CREATE LOADING JOB load_docs FOR GRAPH DocGraph {
-  DEFINE FIELDS (id, uri, http_url, title, text, embedding);
-  LOAD DocCSVSource TO VERTEX Document VALUES (
-    id, uri, http_url, title, text, embedding
-  ) USING SEPARATOR=",", HEADER="true", EOL="\n", QUOTE='"', ESCAPE='\\';
-}
+# Page-level aggregated embedding (one per page)
+CREATE VERTEX PageLevel (
+  PRIMARY_ID plid STRING,     # e.g., "<doc_id>#p<index>"
+  doc_id STRING,
+  page_index INT,
+  embedding LIST<FLOAT>
+) WITH PRIMARY_ID_AS_ATTRIBUTE="TRUE"
+
+# Chunk-level embeddings (potentially multiple per page)
+CREATE VERTEX PageChunk (
+  PRIMARY_ID pid STRING,      # e.g., "<doc_id>#p<index>#c<chunk>"
+  doc_id STRING,
+  page_index INT,
+  chunk_index INT,
+  tokens INT,
+  text STRING,
+  embedding LIST<FLOAT>
+) WITH PRIMARY_ID_AS_ATTRIBUTE="TRUE"
+
+# Similarity between page-level vertices (weighted)
+CREATE DIRECTED EDGE PageSim (FROM PageLevel, TO PageLevel, weight FLOAT)
+
+# Edges to connect hierarchy
+CREATE DIRECTED EDGE PAGELEVEL_OF (FROM PageLevel, TO Document)
+CREATE DIRECTED EDGE CHUNK_OF (FROM PageChunk, TO PageLevel)

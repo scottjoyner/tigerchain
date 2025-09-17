@@ -1,0 +1,34 @@
+USE GRAPH DocGraph
+
+CREATE DATA SOURCE DocsCSV       FOR LOCAL FILE "docs.csv";
+CREATE DATA SOURCE PageLevelCSV  FOR LOCAL FILE "page_levels.csv";
+CREATE DATA SOURCE ChunksCSV     FOR LOCAL FILE "chunks.csv";
+CREATE DATA SOURCE PageSimCSV    FOR LOCAL FILE "pagesim.csv";
+
+CREATE LOADING JOB load_docs FOR GRAPH DocGraph {
+  DEFINE FIELDS (id, uri, http_url, title, text, pages, doc_embedding);
+  LOAD DocsCSV TO VERTEX Document VALUES (id, uri, http_url, title, text, pages, doc_embedding)
+    USING SEPARATOR=",", HEADER="true", EOL="\n", QUOTE='"', ESCAPE='\\', MAXLINELENGTH=6000000, ACCUMULATE="true";
+}
+
+CREATE LOADING JOB load_page_levels FOR GRAPH DocGraph {
+  DEFINE FIELDS (plid, doc_id, page_index, embedding);
+  LOAD PageLevelCSV TO VERTEX PageLevel VALUES (plid, doc_id, page_index, embedding)
+    USING SEPARATOR=",", HEADER="true", EOL="\n", QUOTE='"', ESCAPE='\\', MAXLINELENGTH=6000000, ACCUMULATE="true";
+  LOAD PageLevelCSV TO EDGE PAGELEVEL_OF VALUES ( (plid), (doc_id) )
+    USING SEPARATOR=",", HEADER="true", EOL="\n", QUOTE='"', ESCAPE='\\';
+}
+
+CREATE LOADING JOB load_chunks FOR GRAPH DocGraph {
+  DEFINE FIELDS (pid, doc_id, page_index, chunk_index, tokens, text, embedding);
+  LOAD ChunksCSV TO VERTEX PageChunk VALUES (pid, doc_id, page_index, chunk_index, tokens, text, embedding)
+    USING SEPARATOR=",", HEADER="true", EOL="\n", QUOTE='"', ESCAPE='\\', MAXLINELENGTH=6000000, ACCUMULATE="true";
+  LOAD ChunksCSV TO EDGE CHUNK_OF VALUES ( (pid), ( CONCAT(doc_id,"#p",page_index) ) )  -- join to PageLevel
+    USING SEPARATOR=",", HEADER="true", EOL="\n", QUOTE='"', ESCAPE='\\';
+}
+
+CREATE LOADING JOB load_pagesim FOR GRAPH DocGraph {
+  DEFINE FIELDS (src_plid, dst_plid, weight);
+  LOAD PageSimCSV TO EDGE PageSim VALUES ( (src_plid), (dst_plid), weight )
+    USING SEPARATOR=",", HEADER="true", EOL="\n", QUOTE='"', ESCAPE='\\', ACCUMULATE="true";
+}

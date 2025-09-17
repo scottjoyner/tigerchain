@@ -7,12 +7,13 @@ services:
       - PASSWORD=${TG_PASSWORD}
       - TG_PASSPHRASE=${TG_PASSWORD}
     ports:
-      - "${TG_REST_PORT}:9000"     # RESTPP
-      - "${TG_GSQL_PORT}:14240"    # GSQL/Studio
+      - "${TG_REST_PORT}:9000"
+      - "${TG_GSQL_PORT}:14240"
     volumes:
       - tgdata:/home/tigergraph/data
       - ./gsql:/opt/gsql
       - ./scripts:/opt/scripts
+      - ${TG_LICENSE_FILE}:/home/tigergraph/enterprise-license.txt:ro
     healthcheck:
       test: ["CMD", "/opt/scripts/wait_for_tg.sh"]
       interval: 15s
@@ -67,16 +68,13 @@ services:
       - EMBED_MODEL=${EMBED_MODEL}
       - EMBED_DIM=${EMBED_DIM}
       - BATCH_SIZE=${BATCH_SIZE}
-      - CHUNK_TOKENS=${CHUNK_TOKENS}
-      - CHUNK_OVERLAP=${CHUNK_OVERLAP}
+      - MAX_TOKENS=${MAX_TOKENS}
       - MINIO_ENDPOINT=http://minio:9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=${MINIO_BUCKET}
     volumes:
       - ./worker/sample_docs:/app/sample_docs:ro
-    ports:
-      - "${API_PORT}:8000"
     depends_on:
       tigergraph:
         condition: service_healthy
