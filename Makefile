@@ -1,43 +1,3 @@
-<<<<<<< HEAD
-COMPOSE=docker compose
-
-.PHONY: help up down logs ps ingest query bootstrap
-
-help:
-	@echo "Available targets:"
-	@echo "  up        - Build and start all services"
-	@echo "  down      - Stop and remove containers"
-	@echo "  logs      - Follow service logs"
-	@echo "  ps        - Show container status"
-	@echo "  ingest    - Ingest sample documents via CLI"
-	@echo "  query     - Run an ad-hoc query via CLI (use Q=question)"
-	@echo "  bootstrap - Re-run TigerGraph bootstrap script"
-
-up:
-	$(COMPOSE) up -d --build
-
-bootstrap:
-	$(COMPOSE) run --rm tigergraph-bootstrap
-
-ps:
-	$(COMPOSE) ps
-
-logs:
-	$(COMPOSE) logs -f
-
-down:
-	$(COMPOSE) down -v
-
-ingest:
-	$(COMPOSE) run --rm rag-api python cli.py ingest /data/sample_docs
-
-query:
-	@if [ -z "$(Q)" ]; then \
-	echo "Usage: make query Q='your question'"; \
-	exit 1; \
-	fi
-	$(COMPOSE) run --rm rag-api python cli.py query "$(Q)"
-=======
 # =============================================================================
 # Makefile wrappers for scripts/dev.sh
 # =============================================================================
@@ -80,12 +40,13 @@ help: ## Show available targets
 	@echo "  make dev-exec SERVICE=worker CMD='/bin/bash'"
 
 # ---------- Targets mapped to dev.sh ----------
+.PHONY: dev-up dev-init dev-ingest dev-query dev-logs dev-ps dev-restart dev-rebuild dev-down dev-clean dev-status dev-exec
+
 dev-up: ## Build & start services
 	$(DEV) up
 
 dev-init: dev-up ## Run TigerGraph initialization script
 	$(DEV) init
-
 
 dev-ingest: ## Ingest (.pdf/.txt/.md) -> MinIO -> embeddings -> TG
 	@if [ -n "$(DIR)" ]; then \
@@ -139,4 +100,3 @@ dev-exec: ## Exec into a service: SERVICE=name [CMD='/bin/bash']
 	else \
 	  $(DEV) exec $(SERVICE); \
 	fi
->>>>>>> main
