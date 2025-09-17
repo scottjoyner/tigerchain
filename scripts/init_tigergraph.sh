@@ -2,25 +2,30 @@
 set -euo pipefail
 
 PASS="${PASSWORD:-tigergraph}"
-GRAPH="${TG_GRAPH:-DocGraph}"
+TG_HOME="/home/tigergraph"
+GADMIN="${TG_HOME}/tigergraph/app/cmd/gadmin"
+TG_CFG="${TG_HOME}/tigergraph/data/configs/tg.cfg"   # <- use data/configs
 
-# Ensure OS password
+# Ensure OS password (root op; idempotent)
 echo "tigergraph:${PASS}" | chpasswd || true
 
-# Ensure TG env for the user
-ln -sf /home/tigergraph/tigergraph/configs/tg.cfg /home/tigergraph/.tg.cfg
-chown -h tigergraph:tigergraph /home/tigergraph/.tg.cfg
-grep -q "/home/tigergraph/tigergraph/app/cmd" /home/tigergraph/.bashrc || \
-  (echo 'export PATH=$PATH:/home/tigergraph/tigergraph/app/cmd' >> /home/tigergraph/.bashrc && chown tigergraph:tigergraph /home/tigergraph/.bashrc)
+# Ensure tigergraph has ~/.tg.cfg pointing to the real config
+ln -sf "${TG_CFG}" "${TG_HOME}/.tg.cfg"
+chown -h tigergraph:tigergraph "${TG_HOME}/.tg.cfg"
 
-# Start services (idempotent)
-su - tigergraph -c "gadmin start all" || true
+# Start infra first, then all (idempotent)
+su - tigergraph -c "${GADMIN} start infra" || true
+su - tigergraph -c "${GADMIN} start all" || true
 sleep 5
 
-# Create graph and install schema/loaders/queries
-su - tigergraph -c "gsql \"create graph ${GRAPH}()\"" || true
-su - tigergraph -c "gsql -g ${GRAPH} /opt/gsql/schema.gsql"
-su - tigergraph -c "gsql -g ${GRAPH} /opt/gsql/loading_jobs.gsql"
-su - tigergraph -c "gsql -g ${GRAPH} /opt/gsql/queries.gsql"
+# Wait for REST++ to respond
+for i in $(seq 1 120); do
+  curl -fsS http://localhost:9000/echo >/dev/null 2>&1 && { echo "[tg_boot] RESTPP is up."; break; }
+  sleep 2
+done
 
-echo "[init_tigergraph] Graph '${GRAPH}' initialized."
+# Show status for visibility
+su - tigergraph -c "${GADMIN} status" || true
+
+# Keep container alive
+tail -f /home/tigergraph/tigergraph*/log/* 2>/dev/null || exec sleep infinity
