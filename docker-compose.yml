@@ -1,0 +1,91 @@
+services:
+  tigergraph:
+    image: tigergraph/tigergraph:latest
+    container_name: ${TG_CONTAINER_NAME}
+    environment:
+      - USER=${TG_USER}
+      - PASSWORD=${TG_PASSWORD}
+      - TG_PASSPHRASE=${TG_PASSWORD}
+    ports:
+      - "${TG_REST_PORT}:9000"
+      - "${TG_GSQL_PORT}:14240"
+    volumes:
+      - tgdata:/home/tigergraph/data
+      - ./gsql:/opt/gsql
+      - ./scripts:/opt/scripts
+      - ${TG_LICENSE_FILE}:/home/tigergraph/enterprise-license.txt:ro
+    healthcheck:
+      test: ["CMD", "/opt/scripts/wait_for_tg.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+    networks: [tgnet]
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: minio
+    command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_PORT}:9000"
+      - "${MINIO_CONSOLE_PORT}:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+    networks: [tgnet]
+
+  minio-setup:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/opt/scripts/init_minio.sh"]
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+    volumes:
+      - ./scripts:/opt/scripts
+    networks: [tgnet]
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      - TG_HOST=tigergraph
+      - TG_REST_PORT=9000
+      - TG_GSQL_PORT=14240
+      - TG_USER=${TG_USER}
+      - TG_PASSWORD=${TG_PASSWORD}
+      - TG_GRAPH=${TG_GRAPH}
+      - EMBED_MODEL=${EMBED_MODEL}
+      - EMBED_DIM=${EMBED_DIM}
+      - BATCH_SIZE=${BATCH_SIZE}
+      - MAX_TOKENS=${MAX_TOKENS}
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=${MINIO_BUCKET}
+    volumes:
+      - ./worker/sample_docs:/app/sample_docs:ro
+    depends_on:
+      tigergraph:
+        condition: service_healthy
+      minio-setup:
+        condition: service_completed_successfully
+    networks: [tgnet]
+
+volumes:
+  tgdata:
+  miniodata:
+
+networks:
+  tgnet:
+    name: ${NETWORK_NAME}

@@ -1,0 +1,10 @@
+USE GRAPH DocGraph
+
+CREATE DATA SOURCE DocCSVSource FOR LOCAL FILE "docs.csv";
+
+CREATE LOADING JOB load_docs FOR GRAPH DocGraph {
+  DEFINE FIELDS (id, uri, http_url, title, text, embedding);
+  LOAD DocCSVSource TO VERTEX Document VALUES (
+    id, uri, http_url, title, text, embedding
+  ) USING SEPARATOR=",", HEADER="true", EOL="\n", QUOTE='"', ESCAPE='\\';
+}
