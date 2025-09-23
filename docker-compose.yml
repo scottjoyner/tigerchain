@@ -1,7 +1,9 @@
 services:
   tigergraph:
     image: tigergraph/tigergraph:latest
-    container_name: ${TG_CONTAINER_NAME}
+    user: "0" # <— run boot script as root
+    # Start TG services and wait for REST++ so healthcheck passes
+    command: ["/bin/bash", "-lc", "/opt/scripts/tg_boot.sh"]
     environment:
       - USER=${TG_USER}
       - PASSWORD=${TG_PASSWORD}
@@ -14,15 +16,18 @@ services:
       - ./gsql:/opt/gsql
       - ./scripts:/opt/scripts
     healthcheck:
-      test: ["CMD", "/opt/scripts/wait_for_tg.sh"]
-      interval: 15s
-      timeout: 10s
-      retries: 30
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/echo || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 100
     networks: [tgnet]
 
-  minio:
+  # (Removed tigergraph-bootstrap: CE needs no license; we'll init via scripts/dev.sh)
+  # If you truly want bootstrap, we can add it back later targeting service_started.
+
+  minio-tg:
     image: quay.io/minio/minio:latest
-    container_name: minio
+    # DO NOT set container_name -> avoids clashes with other projects' /minio
     command: server /data --console-address ":${MINIO_CONSOLE_PORT}"
     environment:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
@@ -42,18 +47,20 @@ services:
   minio-setup:
     image: quay.io/minio/mc:latest
     depends_on:
-      minio:
+      minio-tg:
         condition: service_healthy
     entrypoint: ["/bin/sh", "/opt/scripts/init_minio.sh"]
     environment:
+      - MINIO_ENDPOINT=http://minio-tg:9000
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=${MINIO_BUCKET}
     volumes:
       - ./scripts:/opt/scripts
     networks: [tgnet]
+    restart: "no"
 
-  worker:
+  rag-api:
     build:
       context: ./worker
       dockerfile: Dockerfile
@@ -69,24 +76,66 @@ services:
       - BATCH_SIZE=${BATCH_SIZE}
       - CHUNK_TOKENS=${CHUNK_TOKENS}
       - CHUNK_OVERLAP=${CHUNK_OVERLAP}
-      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ENDPOINT=http://minio-tg:9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
       - MINIO_BUCKET=${MINIO_BUCKET}
+      # Optional LLM knobs; keep only what you actually use
+      - EMBED_DEVICE=${EMBED_DEVICE}
+      - EMBED_BATCH_SIZE=${EMBED_BATCH_SIZE}
+      - CHUNK_SIZE=${CHUNK_SIZE}
+      - TOP_K=${TOP_K}
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_API_BASE=${OPENAI_API_BASE}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+      - VLLM_API_BASE=${VLLM_API_BASE}
+      - STORAGE_BASE_PATH=/tmp/tigerchain
+      - API_PORT=${API_PORT}
     volumes:
       - ./worker/sample_docs:/app/sample_docs:ro
     ports:
       - "${API_PORT}:8000"
     depends_on:
       tigergraph:
-        condition: service_healthy
+        condition: service_started                # don't block on "healthy"; our boot script handles it
       minio-setup:
         condition: service_completed_successfully
+    networks: [tgnet]
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    profiles: ["llm"]
+    environment:
+      - MODEL_NAME=${VLLM_MODEL}
+    command: ["--model", "${VLLM_MODEL}"]
+    ports:
+      - "${VLLM_PORT}:8000"
+    volumes:
+      - vllm-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    networks: [tgnet]
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    ports:
+      - "${OLLAMA_PORT}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
     networks: [tgnet]
 
 volumes:
   tgdata:
   miniodata:
+  vllm-cache:
+  ollama-data:
 
 networks:
   tgnet:

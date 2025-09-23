@@ -1,4 +1,4 @@
-USE GRAPH DocGraph
+USE GRAPH $TG_GRAPH
 
 # ---- Document-level topK ----
 CREATE QUERY TopKSimilarDocs(LIST<FLOAT> q, INT topk) FOR GRAPH DocGraph SYNTAX v2 {

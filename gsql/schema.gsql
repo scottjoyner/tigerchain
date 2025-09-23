@@ -1,4 +1,4 @@
-USE GRAPH DocGraph
+USE GRAPH $TG_GRAPH
 
 # Document-level with aggregated doc embedding
 CREATE VERTEX Document (

@@ -40,12 +40,13 @@ help: ## Show available targets
 	@echo "  make dev-exec SERVICE=worker CMD='/bin/bash'"
 
 # ---------- Targets mapped to dev.sh ----------
+.PHONY: dev-up dev-init dev-ingest dev-query dev-logs dev-ps dev-restart dev-rebuild dev-down dev-clean dev-status dev-exec
+
 dev-up: ## Build & start services
 	$(DEV) up
 
 dev-init: dev-up ## Run TigerGraph initialization script
 	$(DEV) init
-
 
 dev-ingest: ## Ingest (.pdf/.txt/.md) -> MinIO -> embeddings -> TG
 	@if [ -n "$(DIR)" ]; then \
