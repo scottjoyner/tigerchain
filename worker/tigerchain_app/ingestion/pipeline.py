@@ -7,12 +7,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Sequence
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.embeddings import Embeddings
 
 from ..config import Settings
 from ..utils.logging import get_logger
 from ..utils.text import resolve_document_id
+from .chunking import AdaptiveChunker
 from .loaders import SUPPORTED_EXTENSIONS, load_documents
 
 logger = get_logger(__name__)
@@ -51,6 +51,24 @@ class ChunkRow:
         }
 
 
+@dataclass
+class IngestedDocument:
+    doc_id: str
+    owner_id: str | None
+    categories: list[str]
+    model_alias: str | None
+    source_path: Path
+    uri: str
+    http_url: str
+    metadata: dict
+
+
+@dataclass
+class IngestionResult:
+    chunks: List[ChunkRow]
+    documents: List[IngestedDocument]
+
+
 class DocumentIngestionPipeline:
     """Coordinates parsing, embedding and persistence for raw documents."""
 
@@ -65,28 +83,47 @@ class DocumentIngestionPipeline:
         self.embeddings = embeddings
         self.tigergraph_client = tigergraph_client
         self.object_store = object_store
-        self.splitter = RecursiveCharacterTextSplitter(
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-        )
+        self.chunker = AdaptiveChunker(settings)
 
-    def ingest_directory(self, directory: Path) -> List[ChunkRow]:
+    def ingest_directory(
+        self,
+        directory: Path,
+        *,
+        owner_id: str | None = None,
+        categories: Iterable[str] | None = None,
+        model_alias: str | None = None,
+        extra_metadata: dict | None = None,
+    ) -> IngestionResult:
         file_paths = [p for p in directory.iterdir() if p.suffix.lower() in SUPPORTED_EXTENSIONS]
         if not file_paths:
             logger.warning("No supported files discovered in %s", directory)
-            return []
-        return self.ingest_files(file_paths)
+            return IngestionResult(chunks=[], documents=[])
+        return self.ingest_files(
+            file_paths,
+            owner_id=owner_id,
+            categories=categories,
+            model_alias=model_alias,
+            extra_metadata=extra_metadata,
+        )
 
-    def ingest_files(self, file_paths: Iterable[Path]) -> List[ChunkRow]:
+    def ingest_files(
+        self,
+        file_paths: Iterable[Path],
+        *,
+        owner_id: str | None = None,
+        categories: Iterable[str] | None = None,
+        model_alias: str | None = None,
+        extra_metadata: dict | None = None,
+    ) -> IngestionResult:
         documents = load_documents(file_paths)
         if not documents:
             logger.warning("No documents parsed from inputs")
-            return []
+            return IngestionResult(chunks=[], documents=[])
 
-        chunks = self.splitter.split_documents(documents)
+        chunks = self.chunker.split_documents(documents)
         if not chunks:
             logger.warning("No chunks generated; check splitter configuration")
-            return []
+            return IngestionResult(chunks=[], documents=[])
 
         embeddings = self.embeddings.embed_documents([chunk.page_content for chunk in chunks])
         rows: List[ChunkRow] = []
@@ -94,12 +131,19 @@ class DocumentIngestionPipeline:
         doc_id_map: dict[str, str] = {}
         doc_counter: dict[str, int] = {}
         upload_cache: dict[str, tuple[str, str]] = {}
+        summaries: dict[str, IngestedDocument] = {}
+        category_list = sorted({c.strip() for c in categories or [] if c and c.strip()})
+        selected_model = model_alias or self.settings.default_agent
 
         for chunk, embedding in zip(chunks, embeddings):
             source_path = Path(chunk.metadata.get("source", "unknown"))
             source_key = source_path.as_posix()
             if source_key not in doc_id_map:
-                doc_id_map[source_key] = resolve_document_id(source_path, doc_id_map.values())
+                doc_id_map[source_key] = resolve_document_id(
+                    source_path,
+                    doc_id_map.values(),
+                    owner=str(owner_id) if owner_id is not None else None,
+                )
                 doc_counter[source_key] = 0
 
             chunk_index = doc_counter[source_key]
@@ -112,6 +156,17 @@ class DocumentIngestionPipeline:
             if source_key not in upload_cache:
                 object_key = f"{doc_id}/{source_path.name}"
                 upload_cache[source_key] = self.object_store.upload(source_path, object_key)
+                uri, http_url = upload_cache[source_key]
+                summaries[source_key] = IngestedDocument(
+                    doc_id=doc_id,
+                    owner_id=str(owner_id) if owner_id is not None else None,
+                    categories=category_list,
+                    model_alias=selected_model,
+                    source_path=source_path,
+                    uri=uri,
+                    http_url=http_url,
+                    metadata=extra_metadata.copy() if extra_metadata else {},
+                )
             uri, http_url = upload_cache[source_key]
 
             metadata = dict(chunk.metadata)
@@ -119,7 +174,12 @@ class DocumentIngestionPipeline:
                 "doc_id": doc_id,
                 "chunk_index": chunk_index,
                 "source_file": source_path.name,
+                "owner_id": str(owner_id) if owner_id is not None else None,
+                "categories": category_list,
+                "model_alias": selected_model,
             })
+            if extra_metadata:
+                metadata.setdefault("ingestion_metadata", extra_metadata)
 
             rows.append(
                 ChunkRow(
@@ -139,7 +199,7 @@ class DocumentIngestionPipeline:
 
         self.tigergraph_client.upsert_chunk_rows(rows)
         logger.info("Persisted %s chunks to TigerGraph", len(rows))
-        return rows
+        return IngestionResult(chunks=rows, documents=list(summaries.values()))
 
 
 class ObjectStore:

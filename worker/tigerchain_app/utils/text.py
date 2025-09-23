@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 
 _SLUG_RE = re.compile(r"[^a-zA-Z0-9]+")
@@ -25,5 +25,8 @@ def ensure_unique_slug(base: str, existing: Iterable[str]) -> str:
     return f"{candidate}-{index}"
 
 
-def resolve_document_id(path: Path, existing: Iterable[str]) -> str:
-    return ensure_unique_slug(path.stem, existing)
+def resolve_document_id(path: Path, existing: Iterable[str], owner: Optional[str] = None) -> str:
+    base = path.stem
+    if owner:
+        base = f"{owner}-{base}"
+    return ensure_unique_slug(base, existing)

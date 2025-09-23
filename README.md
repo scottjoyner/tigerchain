@@ -16,7 +16,7 @@ language models.
 | `tigergraph-bootstrap` | One-shot schema + query installation. |
 | `minio` | S3-compatible object storage for original documents. |
 | `minio-setup` | Creates the configured MinIO bucket. |
-| `rag-api` | FastAPI app exposing ingestion & question answering endpoints. |
+| `rag-api` | FastAPI app exposing onboarding, ingestion & question answering endpoints. |
 | `vllm` *(optional)* | OpenAI-compatible endpoint powered by [vLLM](https://vllm.ai/) (GPU). |
 | `ollama` *(optional)* | Lightweight local model runner for CPU/GPU LLMs. |
 
@@ -51,17 +51,42 @@ GSQL query performs cosine similarity search for retrieval.
    make query Q="What does the knowledge graph support?"
    ```
 
-4. Call the HTTP API:
+4. Onboard a user and obtain an access token:
 
    ```bash
-   curl -X POST "http://localhost:${API_PORT}/query" \
+   curl -X POST "http://localhost:${API_PORT}/auth/register" \
      -H "Content-Type: application/json" \
-     -d '{"question": "Summarise the onboarding steps"}'
+     -d '{"email": "user@example.com", "password": "ChangeMe123", "full_name": "Example User"}'
+
+   curl -X POST "http://localhost:${API_PORT}/auth/token" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d 'username=user@example.com&password=ChangeMe123'
    ```
 
-   Upload documents using `multipart/form-data` to `/ingest`.
+   Use the returned bearer token for subsequent requests and store preferences:
 
-5. Tail logs or shut down when finished:
+   ```bash
+   curl -X POST "http://localhost:${API_PORT}/auth/onboarding" \
+     -H "Authorization: Bearer ${TOKEN}" \
+     -H "Content-Type: application/json" \
+     -d '{"categories": ["product", "architecture"], "preferred_agent": "default"}'
+   ```
+
+5. Upload documents and issue queries:
+
+   ```bash
+   curl -X POST "http://localhost:${API_PORT}/ingest" \
+     -H "Authorization: Bearer ${TOKEN}" \
+     -F "files=@worker/sample_docs/tigergraph_overview.pdf" \
+     -F "categories=product" -F "model_alias=default"
+
+   curl -X POST "http://localhost:${API_PORT}/query" \
+     -H "Authorization: Bearer ${TOKEN}" \
+     -H "Content-Type: application/json" \
+     -d '{"question": "Summarise the onboarding steps", "mode": "parallel", "agents": ["default"]}'
+   ```
+
+6. Tail logs or shut down when finished:
 
    ```bash
    make logs
@@ -76,15 +101,20 @@ GSQL query performs cosine similarity search for retrieval.
 The `rag-api` container image bundles a Typer CLI for local operations. Use
 `docker compose run --rm rag-api python cli.py --help` for full details.
 
-- `make ingest` – embed and upsert all files under `worker/sample_docs`.
-- `make query Q="..."` – run an ad-hoc question against TigerGraph-stored data.
+- `make ingest` – embed and upsert all files under `worker/sample_docs` (supports `--owner`, `--agent`, and `--category`).
+- `make query Q="..."` – run an ad-hoc question against TigerGraph-stored data with optional `--agent`, `--mode`, and `--category` filters.
 
 ## API Endpoints
 
-- `POST /ingest` – Accepts one or more file uploads, parses + ingests them into
-  TigerGraph. Returns the number of created chunks.
-- `POST /query` – Accepts JSON `{ "question": "..." }` and returns the answer
-  plus metadata about retrieved chunks.
+- `POST /auth/register` – Register a new user account.
+- `POST /auth/token` – Obtain a JWT access token via username/password.
+- `POST /auth/onboarding` – Store the user's preferred agent and categories.
+- `POST /ingest` – Accepts one or more file uploads with optional metadata,
+  parses + ingests them into TigerGraph, and returns ingestion details.
+- `POST /query` – Accepts JSON `{ "question": "...", "mode": "sequential"|"parallel", ... }`
+  and returns agent-specific answers plus source metadata.
+- `GET /agents` – Lists configured model agents.
+- `GET /documents` – Returns the authenticated user's recent document uploads.
 - `GET /healthz` – Basic liveness check.
 
 Both endpoints rely on the shared application context which:
@@ -116,6 +146,18 @@ To run local models:
 Embeddings default to `sentence-transformers/all-MiniLM-L6-v2`. Override with
 `EMBED_MODEL`, `EMBED_DEVICE`, and `EMBED_BATCH_SIZE` to match hardware.
 
+## Authentication & Persistence
+
+Authentication, onboarding preferences, and document metadata are persisted in a
+SQL database configured via the following environment variables:
+
+- `DATABASE_URL` – defaults to `sqlite:///./tigerchain.db` inside the API container.
+- `JWT_SECRET_KEY`, `JWT_ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES` – tune token issuance settings.
+
+Override these values in `.env` or the Docker Compose file to integrate with an
+external PostgreSQL/MySQL instance. When running against SQLite the application
+handles migrations automatically at startup.
+
 ## Development Notes
 
 - The application automatically re-applies GSQL schema/query files at startup.
@@ -123,7 +165,7 @@ Embeddings default to `sentence-transformers/all-MiniLM-L6-v2`. Override with
 - Uploaded documents are copied to MinIO under `<doc-id>/<filename>`, and
   temporary files are cleaned up after ingestion.
 - `worker/tigerchain_app` contains modular components for embeddings,
-  ingestion, TigerGraph interactions, retrieval, and LLM orchestration.
+  ingestion, TigerGraph interactions, authentication, and multi-agent orchestration.
 - Extend the RAG flow by adding custom retrievers, evaluation routines, or
   alternative storage backends following the same interfaces.
 
