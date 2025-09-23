@@ -17,6 +17,7 @@ PyMuPDF==1.24.9
 # API
 fastapi==0.112.2
 uvicorn[standard]==0.30.6
-
-# Optional: if you plan to accept file uploads via API in the future
-# python-multipart==0.0.9
+python-multipart==0.0.9
+sqlmodel==0.0.21
+passlib[bcrypt]==1.7.4
+python-jose==3.3.0

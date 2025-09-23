@@ -3,10 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from langchain.chains import RetrievalQA
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models import BaseLanguageModel
-from langchain.chains import RetrievalQA
 
+from .agents import AgentOrchestrator
+from .auth import models as _auth_models  # noqa: F401 - ensure models registered
+from .auth.database import init_db
 from .config import Settings, get_settings
 from .ingestion.embeddings import create_embeddings
 from .ingestion.pipeline import DocumentIngestionPipeline
@@ -30,6 +33,7 @@ class ApplicationContext:
     retriever: TigerGraphVectorRetriever
     llm: BaseLanguageModel
     qa_chain: RetrievalQA
+    agent_orchestrator: AgentOrchestrator
 
 
 _context: ApplicationContext | None = None
@@ -41,6 +45,7 @@ def build_context(force: bool = False) -> ApplicationContext:
         return _context
 
     settings = get_settings()
+    init_db(settings)
     embeddings = create_embeddings(settings)
     tigergraph = TigerGraphClient(settings)
     _bootstrap_gsql(tigergraph)
@@ -49,6 +54,7 @@ def build_context(force: bool = False) -> ApplicationContext:
     retriever = TigerGraphVectorRetriever(settings, embeddings, tigergraph)
     llm = create_llm(settings)
     qa_chain = build_qa_chain(settings, retriever, llm)
+    agent_orchestrator = AgentOrchestrator(settings, embeddings, tigergraph)
 
     _context = ApplicationContext(
         settings=settings,
@@ -59,6 +65,7 @@ def build_context(force: bool = False) -> ApplicationContext:
         retriever=retriever,
         llm=llm,
         qa_chain=qa_chain,
+        agent_orchestrator=agent_orchestrator,
     )
     logger.info("Application context initialised")
     return _context

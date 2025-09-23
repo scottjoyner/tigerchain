@@ -4,7 +4,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional
 
-from pydantic import Field
+import json
+
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +49,47 @@ class Settings(BaseSettings):
     openai_api_base: Optional[str] = Field(default=None, description="Override base URL for OpenAI compatible endpoints")
     ollama_base_url: str = Field(default="http://ollama:11434", description="Ollama service URL")
     vllm_api_base: str = Field(default="http://vllm:8000/v1", description="vLLM OpenAI-compatible endpoint")
+    model_registry: dict[str, dict[str, str]] = Field(
+        default_factory=lambda: {
+            "default": {"provider": "ollama", "model": "llama2", "temperature": 0.1},
+        },
+        description=(
+            "Mapping of logical agent names to provider/model definitions. "
+            "Values may be overridden using the MODEL_REGISTRY environment variable containing a JSON object."
+        ),
+    )
+    default_agent: str = Field(
+        default="default",
+        description="Agent identifier to use when a user has not selected a preferred model.",
+    )
+
+    # Authentication & persistence
+    database_url: str = Field(
+        default="sqlite:///./tigerchain.db",
+        description="SQL database URL for authentication and metadata",
+    )
+    jwt_secret_key: str = Field(
+        default="change-this-secret",
+        description="Signing key for JSON web tokens",
+    )
+    jwt_algorithm: str = Field(default="HS256", description="JWT signing algorithm")
+    access_token_expire_minutes: int = Field(
+        default=60,
+        description="Minutes before issued access tokens expire",
+    )
+
+    @field_validator("model_registry", mode="before")
+    @classmethod
+    def _parse_model_registry(cls, value: object) -> dict[str, dict[str, str]]:
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+                if not isinstance(parsed, dict):
+                    raise ValueError("MODEL_REGISTRY must be a JSON object")
+                return parsed
+            except json.JSONDecodeError as exc:  # pragma: no cover - defensive logging
+                raise ValueError("MODEL_REGISTRY must be valid JSON") from exc
+        return value  # type: ignore[return-value]
 
     # API
     api_host: str = Field(default="0.0.0.0", description="FastAPI bind host")
