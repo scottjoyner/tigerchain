@@ -56,6 +56,8 @@ class IngestedDocumentResponse(BaseModel):
     private_embedding_uri: Optional[str]
     embedding_scope: str
     sharing_preference: str
+    file_size_bytes: Optional[int] = None
+    source_checksum: Optional[str] = None
 
 
 class IngestResponse(BaseModel):
@@ -179,6 +181,8 @@ async def ingest_documents(
                 private_embedding_uri=record.private_embedding_uri or summary.private_embedding_uri,
                 embedding_scope=record.embedding_scope or summary.embedding_scope,
                 sharing_preference=record.sharing_preference or sharing_preference,
+                file_size_bytes=summary.file_size_bytes,
+                source_checksum=summary.source_checksum,
             )
         )
 
