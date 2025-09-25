@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, Iterable, List, Optional, Sequence
 
 from langchain.chains import RetrievalQA
@@ -23,6 +23,7 @@ class QueryContext:
     categories: Optional[Iterable[str]] = None
     model_alias: Optional[str] = None
     embedding_scope: Optional[str] = None
+    subject_priorities: Optional[Dict[str, float]] = None
 
 
 @dataclass
@@ -66,6 +67,7 @@ class RagAgent:
             categories=categories,
             model_alias=context.model_alias or self.name,
             embedding_scope=context.embedding_scope,
+            subject_weights=context.subject_priorities,
         )
         logger.debug("Agent %s executing query with filters: %s", self.name, retrieval_context)
         with retriever.use_context(retrieval_context):
@@ -126,13 +128,35 @@ class AgentOrchestrator:
 
         agents = [self._get_agent(name) for name in agent_names]
         metadata_map = {name: self.settings.model_registry.get(name) or {} for name in agent_names}
+
+        if query_context.subject_priorities:
+            agents.sort(
+                key=lambda agent: self._agent_subject_alignment(
+                    agent.name, query_context.subject_priorities or {}
+                ),
+                reverse=True,
+            )
+            agent_names = [agent.name for agent in agents]
+            metadata_map = {name: self.settings.model_registry.get(name) or {} for name in agent_names}
+
+        per_agent_context: Dict[str, QueryContext] = {}
+        shared_alias = query_context.model_alias if len(agents) == 1 else None
+        for agent in agents:
+            agent_config = self.settings.model_registry.get(agent.name, {})
+            alias = shared_alias if shared_alias is not None else None
+            embedding_scope = agent_config.get("preferred_embedding_scope") or query_context.embedding_scope
+            per_agent_context[agent.name] = replace(
+                query_context,
+                model_alias=alias,
+                embedding_scope=embedding_scope,
+            )
         if mode == "parallel" and len(agents) > 1:
-            tasks = [agent.arun(question, query_context) for agent in agents]
+            tasks = [agent.arun(question, per_agent_context[agent.name]) for agent in agents]
             raw_results = await asyncio.gather(*tasks)
         else:
             raw_results = []
             for agent in agents:
-                raw_results.append(await agent.arun(question, query_context))
+                raw_results.append(await agent.arun(question, per_agent_context[agent.name]))
 
         results: List[AgentQueryResult] = []
         for item in raw_results:
@@ -204,6 +228,19 @@ class AgentOrchestrator:
         }
         summary = "; ".join(concerns) if concerns else "No outstanding validation concerns."
         return AgentQueryResult(agent=orchestrator_name, answer=summary, sources=[], metadata=metadata)
+
+    def _agent_subject_alignment(self, agent_name: str, priorities: Dict[str, float]) -> float:
+        config = self.settings.model_registry.get(agent_name, {})
+        specialities = config.get("subject_specialities") or config.get("subjects") or []
+        if not isinstance(specialities, (list, tuple)):
+            return 0.0
+        best_score = 0.0
+        for speciality in specialities:
+            if not isinstance(speciality, str):
+                continue
+            normalised = speciality.strip().lower()
+            best_score = max(best_score, priorities.get(normalised, 0.0))
+        return round(best_score, 6)
 
 
 class TigerGraphClient:  # pragma: no cover - circular reference helper

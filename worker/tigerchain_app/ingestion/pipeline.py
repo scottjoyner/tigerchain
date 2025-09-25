@@ -12,7 +12,9 @@ from typing import Iterable, List, Sequence, Tuple
 from langchain_core.embeddings import Embeddings
 
 from ..config import Settings
+from ..utils.importance import DocumentImportanceScorer
 from ..utils.logging import get_logger
+from ..utils.subjects import SubjectClassifier
 from ..utils.text import resolve_document_id
 from .chunking import AdaptiveChunker
 from .loaders import SUPPORTED_EXTENSIONS, load_documents
@@ -103,6 +105,8 @@ class DocumentIngestionPipeline:
         self.tigergraph_client = tigergraph_client
         self.object_store = object_store
         self.chunker = AdaptiveChunker(settings)
+        self.subject_classifier = SubjectClassifier()
+        self.importance_scorer = DocumentImportanceScorer()
 
     def ingest_directory(
         self,
@@ -163,6 +167,8 @@ class DocumentIngestionPipeline:
         private_embedding_cache: dict[str, list[tuple[int, List[int]]]] = {}
         category_list = sorted({c.strip() for c in categories or [] if c and c.strip()})
         selected_model = model_alias or self.settings.default_agent
+        subject_cache: dict[str, set[str]] = {}
+        chunk_subject_cache: dict[tuple[str, int], set[str]] = {}
 
         for chunk, embedding, private_embedding in zip(chunks, dense_embeddings, private_embeddings):
             source_path = Path(chunk.metadata.get("source", "unknown"))
@@ -232,6 +238,11 @@ class DocumentIngestionPipeline:
             if extra_metadata:
                 metadata.setdefault("ingestion_metadata", extra_metadata)
 
+            subjects = self.subject_classifier.classify(chunk.page_content, metadata.get("subject_tags"))
+            metadata["subject_tags"] = subjects
+            subject_cache.setdefault(source_key, set()).update(subjects)
+            chunk_subject_cache[(doc_id, chunk_id)] = set(subjects)
+
             if scope is not EmbeddingScope.PUBLIC:
                 private_vector = list(map(int, private_embedding))
                 private_embedding_cache[source_key].append((chunk_index, private_vector))
@@ -255,6 +266,42 @@ class DocumentIngestionPipeline:
                     created_at=datetime.now(timezone.utc),
                 )
             )
+
+        doc_importance: dict[str, float] = {}
+        for source_key, summary in summaries.items():
+            subjects = sorted(subject_cache.get(source_key, set()))
+            summary.metadata.setdefault("subjects", {})
+            subjects_block = summary.metadata["subjects"]  # type: ignore[assignment]
+            if isinstance(subjects_block, dict):
+                subjects_block.update(
+                    {
+                        "tags": subjects,
+                        "collections": self.subject_classifier.build_collections(subjects),
+                    }
+                )
+            summary.metadata["subject_tags"] = subjects
+            summary.metadata["subject_collections"] = self.subject_classifier.build_collections(subjects)
+            doc_score = self.importance_scorer.score_document(
+                file_size_bytes=summary.file_size_bytes,
+                categories=summary.categories,
+                metadata=summary.metadata,
+                subject_tags=subjects,
+            )
+            summary.metadata["importance_score"] = doc_score
+            summary.metadata["subject_weights"] = self.importance_scorer.rank_subjects(subjects, doc_score)
+            doc_importance[summary.doc_id] = doc_score
+
+        for row in rows:
+            subjects = sorted(chunk_subject_cache.get((row.doc_id, row.chunk_id), set()))
+            doc_score = doc_importance.get(row.doc_id, self.importance_scorer.base_score)
+            chunk_score = self.importance_scorer.score_chunk(
+                chunk_length=len(row.content),
+                document_score=doc_score,
+                subject_tags=subjects,
+            )
+            row.metadata["subject_tags"] = subjects
+            row.metadata["importance_score"] = chunk_score
+            row.metadata["doc_importance_score"] = doc_score
 
         self.tigergraph_client.upsert_chunk_rows(rows)
         self._persist_private_embeddings(private_embedding_cache, doc_id_map, submission_id, summaries, scope)

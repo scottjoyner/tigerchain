@@ -67,6 +67,13 @@ class Settings(BaseSettings):
 
     # Retrieval
     top_k: int = Field(default=5, description="Number of similar chunks to fetch per query")
+    retrieval_overfetch_factor: float = Field(
+        default=2.5,
+        description=(
+            "Multiplier applied to top_k when fetching raw candidates from the vector store. "
+            "The additional documents are later filtered and reranked to compensate for metadata filters."
+        ),
+    )
 
     # LLM providers
     llm_provider: Literal["ollama", "vllm", "openai", "anthropic"] = Field(default="ollama", description="LLM backend provider")
