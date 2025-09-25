@@ -9,6 +9,15 @@ CREATE VERTEX Document (
   text STRING,
   pages INT,
   doc_embedding LIST<FLOAT>   # NEW
+  , source STRING
+  , content STRING
+  , metadata STRING
+  , embedding LIST<FLOAT>
+  , private_embedding LIST<INT>
+  , submission_id STRING
+  , created_at STRING
+  , doc_id STRING
+  , chunk_id INT
 ) WITH PRIMARY_ID_AS_ATTRIBUTE="TRUE"
 
 # Page-level aggregated embedding (one per page)

@@ -41,6 +41,7 @@ class QueryRequest(BaseModel):
     agents: Optional[List[str]] = None
     mode: Literal["sequential", "parallel"] = "sequential"
     categories: Optional[List[str]] = None
+    embedding_scope: Optional[Literal["public", "private"]] = None
 
 
 class IngestedDocumentResponse(BaseModel):
@@ -51,6 +52,10 @@ class IngestedDocumentResponse(BaseModel):
     object_uri: Optional[str]
     http_url: Optional[str]
     metadata: Optional[dict] = None
+    submission_id: str
+    private_embedding_uri: Optional[str]
+    embedding_scope: str
+    sharing_preference: str
 
 
 class IngestResponse(BaseModel):
@@ -89,6 +94,16 @@ async def ingest_documents(
     categories: Optional[List[str]] = Form(default=None, description="Additional categories"),
     model_alias: Optional[str] = Form(default=None, description="Agent/model alias to tag the document"),
     metadata: Optional[str] = Form(default=None, description="Optional JSON metadata to persist with the upload"),
+    embedding_scope: Literal["public", "private", "both"] = Form(
+        default="both", description="Embedding visibility preference"
+    ),
+    sharing_preference: Literal["public", "private", "both"] = Form(
+        default="both", description="Embedding sets that may be shared"
+    ),
+    submission_id: Optional[str] = Form(
+        default=None,
+        description="Optional client-provided submission identifier to tag stored embeddings",
+    ),
     context=Depends(get_context),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
@@ -130,6 +145,8 @@ async def ingest_documents(
         categories=category_values,
         model_alias=preferred_agent,
         extra_metadata=extra_metadata,
+        embedding_scope=embedding_scope,
+        submission_id=submission_id,
     )
 
     document_service = DocumentService(session)
@@ -144,6 +161,10 @@ async def ingest_documents(
             object_uri=summary.uri,
             http_url=summary.http_url,
             metadata=summary.metadata,
+            submission_id=summary.submission_id,
+            embedding_scope=summary.embedding_scope,
+            sharing_preference=sharing_preference,
+            private_embedding_uri=summary.private_embedding_uri,
         )
         response_docs.append(
             IngestedDocumentResponse(
@@ -154,6 +175,10 @@ async def ingest_documents(
                 object_uri=record.object_uri,
                 http_url=record.http_url,
                 metadata=record.metadata,
+                submission_id=record.submission_id or summary.submission_id,
+                private_embedding_uri=record.private_embedding_uri or summary.private_embedding_uri,
+                embedding_scope=record.embedding_scope or summary.embedding_scope,
+                sharing_preference=record.sharing_preference or sharing_preference,
             )
         )
 
@@ -187,6 +212,7 @@ async def query_rag(
         owner_id=str(current_user.id),
         categories=categories,
         model_alias=agent_names[0],
+        embedding_scope=request.embedding_scope,
     )
     results = await orchestrator.run_query(
         question=request.question,

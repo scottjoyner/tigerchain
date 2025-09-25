@@ -102,6 +102,10 @@ class DocumentService:
         object_uri: Optional[str],
         http_url: Optional[str],
         metadata: Optional[dict] = None,
+        submission_id: Optional[str] = None,
+        embedding_scope: Optional[str] = None,
+        sharing_preference: Optional[str] = None,
+        private_embedding_uri: Optional[str] = None,
     ) -> DocumentUpload:
         record = DocumentUpload(
             user_id=user_id,
@@ -112,6 +116,10 @@ class DocumentService:
             object_uri=object_uri,
             http_url=http_url,
             metadata=metadata or {},
+            submission_id=submission_id,
+            embedding_scope=embedding_scope,
+            sharing_preference=sharing_preference,
+            private_embedding_uri=private_embedding_uri,
         )
         self.session.add(record)
         self.session.commit()

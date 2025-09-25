@@ -23,6 +23,7 @@ class RetrievalContext:
     owner_id: Optional[str] = None
     categories: Optional[Iterable[str]] = None
     model_alias: Optional[str] = None
+    embedding_scope: Optional[str] = None
 
 
 class TigerGraphVectorRetriever(BaseRetriever):
@@ -45,8 +46,9 @@ class TigerGraphVectorRetriever(BaseRetriever):
 
     def _get_relevant_documents(self, query: str) -> List[Document]:  # type: ignore[override]
         logger.debug("Embedding query for retrieval")
-        embedding = self.embeddings.embed_query(query)
-        response = self.tigergraph_client.top_k_similar(embedding, self.settings.top_k)
+        embedding_mode = self._resolve_embedding_mode()
+        embedding = self._embed_query(query, embedding_mode)
+        response = self.tigergraph_client.top_k_similar(embedding, self.settings.top_k, embedding_mode)
         return self._parse_response(response)
 
     async def _aget_relevant_documents(self, query: str) -> List[Document]:  # type: ignore[override]
@@ -117,5 +119,23 @@ class TigerGraphVectorRetriever(BaseRetriever):
                     continue
             if model_alias and metadata.get("model_alias") not in {model_alias, None}:
                 continue
+            requested_scope = context.embedding_scope
+            if requested_scope and metadata.get("embedding_scope") not in {requested_scope, "both"}:
+                continue
             filtered.append(doc)
         return filtered
+
+    def _resolve_embedding_mode(self) -> str:
+        context = self._context.get()
+        if context and context.embedding_scope in {"public", "private"}:
+            return str(context.embedding_scope)
+        return "public"
+
+    def _embed_query(self, query: str, mode: str):
+        if mode == "private" and hasattr(self.embeddings, "embed_query_with_mode"):
+            vector = self.embeddings.embed_query_with_mode(query, mode)  # type: ignore[assignment]
+            return [float(value) for value in vector]
+        if mode == "private" and hasattr(self.embeddings, "embed_query_private"):
+            vector = self.embeddings.embed_query_private(query)  # type: ignore[assignment]
+            return [float(value) for value in vector]
+        return self.embeddings.embed_query(query)

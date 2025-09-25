@@ -37,6 +37,13 @@ class Settings(BaseSettings):
     embed_batch_size: int = Field(default=32, description="Batch size for embedding generation")
     chunk_size: int = Field(default=900, description="Character chunk size for document splitting")
     chunk_overlap: int = Field(default=150, description="Chunk overlap for recursive splitter")
+    bitwise_threshold: float = Field(
+        default=0.0,
+        description=(
+            "Threshold used to convert dense embeddings into bitwise private embeddings. "
+            "Values greater than or equal to the threshold are mapped to 1, others to 0."
+        ),
+    )
 
     # Retrieval
     top_k: int = Field(default=5, description="Number of similar chunks to fetch per query")

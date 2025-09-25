@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from io import BytesIO
 from pathlib import Path
 from typing import Tuple
 
@@ -38,6 +40,18 @@ class MinioObjectStore(ObjectStore):
 
     def upload(self, path: Path, key: str) -> Tuple[str, str]:
         self.client.upload_file(str(path), self.settings.minio_bucket, key)
+        uri = f"s3://{self.settings.minio_bucket}/{key}"
+        http_url = f"{self.settings.minio_endpoint.rstrip('/')}/{self.settings.minio_bucket}/{key}"
+        return uri, http_url
+
+    def upload_json(self, payload: dict, key: str) -> Tuple[str, str]:
+        body = json.dumps(payload).encode("utf-8")
+        self.client.put_object(
+            Bucket=self.settings.minio_bucket,
+            Key=key,
+            Body=BytesIO(body),
+            ContentType="application/json",
+        )
         uri = f"s3://{self.settings.minio_bucket}/{key}"
         http_url = f"{self.settings.minio_endpoint.rstrip('/')}/{self.settings.minio_bucket}/{key}"
         return uri, http_url
