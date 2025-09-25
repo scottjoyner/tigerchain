@@ -24,6 +24,7 @@ class RetrievalContext:
     categories: Optional[Iterable[str]] = None
     model_alias: Optional[str] = None
     embedding_scope: Optional[str] = None
+    subject_weights: Optional[dict[str, float]] = None
 
 
 class TigerGraphVectorRetriever(BaseRetriever):
@@ -48,8 +49,14 @@ class TigerGraphVectorRetriever(BaseRetriever):
         logger.debug("Embedding query for retrieval")
         embedding_mode = self._resolve_embedding_mode()
         embedding = self._embed_query(query, embedding_mode)
-        response = self.tigergraph_client.top_k_similar(embedding, self.settings.top_k, embedding_mode)
-        return self._parse_response(response)
+        fetch_count = self._candidate_pool_size()
+        response = self.tigergraph_client.top_k_similar(embedding, fetch_count, embedding_mode)
+        candidates = self._parse_response(response)
+        reranked = self._rerank_documents(embedding, candidates, embedding_mode)
+        top_k = max(self.settings.top_k, 0)
+        if top_k:
+            return reranked[:top_k]
+        return reranked
 
     async def _aget_relevant_documents(self, query: str) -> List[Document]:  # type: ignore[override]
         return self._get_relevant_documents(query)
@@ -124,6 +131,75 @@ class TigerGraphVectorRetriever(BaseRetriever):
                 continue
             filtered.append(doc)
         return filtered
+
+    def _candidate_pool_size(self) -> int:
+        base = max(self.settings.top_k, 1)
+        factor = max(self.settings.retrieval_overfetch_factor, 1.0)
+        return max(int(base * factor), base)
+
+    def _rerank_documents(
+        self,
+        query_embedding: List[float],
+        documents: List[Document],
+        embedding_mode: str,
+    ) -> List[Document]:
+        if not documents:
+            return []
+
+        try:
+            doc_vectors = self._embed_documents([doc.page_content for doc in documents], embedding_mode)
+        except Exception as exc:  # pragma: no cover - embedding providers without document support
+            logger.warning("Falling back to TigerGraph scores for reranking: %s", exc)
+            return sorted(documents, key=lambda doc: float(doc.metadata.get("score") or 0.0), reverse=True)
+
+        query_vector = self._normalise_vector(query_embedding)
+        context = self._context.get()
+        weights = context.subject_weights if context else {}
+
+        scored: List[tuple[float, Document]] = []
+        for document, vector in zip(documents, doc_vectors):
+            doc_vector = self._normalise_vector(vector)
+            similarity = sum(q * d for q, d in zip(query_vector, doc_vector))
+            tg_score = float(document.metadata.get("score") or 0.0)
+            importance = float(document.metadata.get("importance_score") or 0.0)
+            subject_bonus = 0.0
+            if weights:
+                subject_tags = document.metadata.get("subject_tags") or []
+                if isinstance(subject_tags, str):
+                    subject_tags = [subject_tags]
+                for tag in subject_tags:
+                    if not isinstance(tag, str):
+                        continue
+                    subject_bonus = max(subject_bonus, weights.get(tag.strip().lower(), 0.0))
+            combined = (similarity * 0.55) + (tg_score * 0.25) + (importance * 0.15) + (subject_bonus * 0.05)
+            scored.append((combined, document))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [doc for _, doc in scored]
+
+    def _embed_documents(self, texts: List[str], mode: str) -> List[List[float]]:
+        if mode == "private" and hasattr(self.embeddings, "embed_documents_with_mode"):
+            return [
+                [float(value) for value in vector]
+                for vector in self.embeddings.embed_documents_with_mode(texts, mode)  # type: ignore[attr-defined]
+            ]
+        if mode == "private" and hasattr(self.embeddings, "embed_documents_private"):
+            return [
+                [float(value) for value in vector]
+                for vector in self.embeddings.embed_documents_private(texts)  # type: ignore[attr-defined]
+            ]
+        return [
+            [float(value) for value in vector]
+            for vector in self.embeddings.embed_documents(texts)
+        ]
+
+    @staticmethod
+    def _normalise_vector(vector: Iterable[float]) -> List[float]:
+        values = [float(v) for v in vector]
+        length = sum(value * value for value in values) ** 0.5
+        if not length:
+            return values
+        return [value / length for value in values]
 
     def _resolve_embedding_mode(self) -> str:
         context = self._context.get()

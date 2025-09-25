@@ -21,10 +21,12 @@ from tigerchain_app.auth.security import get_current_active_user
 from tigerchain_app.auth.service import DocumentService
 from tigerchain_app.context import build_context
 from tigerchain_app.utils.logging import configure_logging, get_logger
+from tigerchain_app.utils.subjects import SubjectClassifier
 
 configure_logging()
 logger = get_logger(__name__)
 app = FastAPI(title="TigerChain RAG Service")
+subject_classifier = SubjectClassifier()
 
 app.add_middleware(
     CORSMiddleware,
@@ -224,11 +226,14 @@ async def query_rag(
         agent_names = [default_agent]
 
     categories = request.categories or current_user.categories
+    subject_priorities = subject_classifier.priorities_from_categories(categories)
+    shared_alias = agent_names[0] if len(agent_names) == 1 else None
     query_context = QueryContext(
         owner_id=str(current_user.id),
         categories=categories,
-        model_alias=agent_names[0],
+        model_alias=shared_alias,
         embedding_scope=request.embedding_scope,
+        subject_priorities=subject_priorities or None,
     )
     results = await orchestrator.run_query(
         question=request.question,

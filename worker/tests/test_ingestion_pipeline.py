@@ -140,6 +140,11 @@ def test_ingest_files_populates_metadata(tmp_path: Path, pipeline: DocumentInges
     assert row.metadata["source_file_size"] == source.stat().st_size
     assert result.documents[0].source_checksum == row.metadata["source_checksum"]
     assert result.documents[0].file_size_bytes == source.stat().st_size
+    assert row.metadata.get("subject_tags")
+    assert "importance_score" in row.metadata
+    document_metadata = result.documents[0].metadata
+    assert document_metadata.get("subject_tags")
+    assert document_metadata.get("importance_score") is not None
 
     store: DummyObjectStore = pipeline.object_store  # type: ignore[attr-defined]
     assert store.uploaded_json, "private embeddings should be persisted in 'both' scope"
