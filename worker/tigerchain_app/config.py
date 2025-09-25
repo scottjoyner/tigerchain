@@ -7,7 +7,27 @@ from typing import Literal, Optional
 import json
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+try:  # pragma: no cover - optional dependency for offline testing
+    from pydantic_settings import BaseSettings, SettingsConfigDict
+    HAS_PYDANTIC_SETTINGS = True
+except ImportError:  # pragma: no cover - fallback for environments without pydantic-settings
+    from pydantic import BaseModel
+
+    class SettingsConfigDict(dict):
+        """Lightweight stand-in matching the mapping behaviour of SettingsConfigDict."""
+
+        def __init__(self, **kwargs: object) -> None:
+            super().__init__(**kwargs)
+
+    class BaseSettings(BaseModel):
+        """Fallback BaseSettings implementation relying on pydantic.BaseModel."""
+
+        model_config: dict[str, object] = {}
+
+        def __init__(self, **data: object) -> None:
+            super().__init__(**data)
+
+    HAS_PYDANTIC_SETTINGS = False
 
 
 class Settings(BaseSettings):
@@ -104,8 +124,9 @@ class Settings(BaseSettings):
     api_reload: bool = Field(default=False, description="Enable autoreload (development only)")
     storage_base_path: Path = Field(default=Path("/tmp/tigerchain"), description="Temporary path for uploaded files")
 
-    class Config:
-        env_prefix = ""
+    if HAS_PYDANTIC_SETTINGS:
+        class Config:
+            env_prefix = ""
 
 
 @lru_cache(maxsize=1)

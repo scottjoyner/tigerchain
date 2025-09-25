@@ -103,6 +103,9 @@ The `rag-api` container image bundles a Typer CLI for local operations. Use
 
 - `make ingest` – embed and upsert all files under `worker/sample_docs` (supports `--owner`, `--agent`, and `--category`).
 - `make query Q="..."` – run an ad-hoc question against TigerGraph-stored data with optional `--agent`, `--mode`, and `--category` filters.
+- `docker compose run --rm rag-api python cli.py agents` – inspect the configured agent registry.
+
+The CLI now prints a concise ingestion summary highlighting chunk counts, file sizes, and private embedding artifacts for each processed document. The `query` command also accepts `--json` to emit machine-readable responses for automation workflows.
 
 ## API Endpoints
 
@@ -154,6 +157,22 @@ Embeddings default to `sentence-transformers/all-MiniLM-L6-v2`. Override with
 `EMBED_MODEL`, `EMBED_DEVICE`, and `EMBED_BATCH_SIZE` to match hardware. The
 `BITWISE_THRESHOLD` setting controls how dense vectors are binarised for private
 embedding generation.
+
+## Testing & Coverage
+
+Unit tests live under `worker/tests` and can be executed locally without the
+full container stack:
+
+```bash
+cd worker
+pytest
+```
+
+To generate coverage metrics, install `pytest-cov` and run:
+
+```bash
+pytest --cov=tigerchain_app --cov=cli --cov-report=term-missing
+```
 
 ## Authentication & Persistence
 
