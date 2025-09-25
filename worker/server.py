@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Literal, Optional
 
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlmodel import Session, select
@@ -14,6 +15,7 @@ from tigerchain_app.agents import QueryContext
 from tigerchain_app.auth.database import get_session
 from tigerchain_app.auth.models import DocumentUpload, User
 from tigerchain_app.auth.router import router as auth_router
+from tigerchain_app.agents.router import router as builder_router
 from tigerchain_app.auth.schemas import DocumentRecord
 from tigerchain_app.auth.security import get_current_active_user
 from tigerchain_app.auth.service import DocumentService
@@ -33,6 +35,15 @@ app.add_middleware(
 )
 
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
+app.include_router(builder_router)
+
+
+@app.get("/agent-builder", response_class=HTMLResponse)
+async def agent_builder_ui() -> HTMLResponse:
+    template_path = Path(__file__).resolve().parent / "tigerchain_app" / "agents" / "templates" / "agent_builder.html"
+    if not template_path.exists():
+        raise HTTPException(status_code=404, detail="Agent builder UI not found")
+    return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
 
 
 class QueryRequest(BaseModel):
@@ -70,6 +81,7 @@ class AgentResult(BaseModel):
     agent: str
     answer: Optional[str]
     sources: List[dict]
+    metadata: Optional[dict] = None
 
 
 class QueryResponse(BaseModel):
@@ -225,7 +237,12 @@ async def query_rag(
         mode=request.mode,
     )
     formatted_results = [
-        AgentResult(agent=result.agent, answer=result.answer, sources=result.sources)
+        AgentResult(
+            agent=result.agent,
+            answer=result.answer,
+            sources=result.sources,
+            metadata=result.metadata,
+        )
         for result in results
     ]
     answer = formatted_results[0].answer if formatted_results else None

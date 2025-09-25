@@ -8,6 +8,7 @@ from langchain.chains import RetrievalQA
 from langchain_core.embeddings import Embeddings
 
 from ..config import Settings
+from .registry import AgentRegistrySnapshot
 from ..rag.chain import build_qa_chain, format_sources
 from ..rag.llms import create_llm_from_config
 from ..rag.retriever import RetrievalContext, TigerGraphVectorRetriever
@@ -29,6 +30,7 @@ class AgentQueryResult:
     agent: str
     answer: Optional[str]
     sources: List[Dict[str, Optional[str]]]
+    metadata: Dict[str, object] | None = None
 
 
 class RagAgent:
@@ -81,11 +83,18 @@ class AgentOrchestrator:
         settings: Settings,
         embeddings: Embeddings,
         tigergraph_client: "TigerGraphClient",
+        *,
+        base_registry: Optional[Dict[str, Dict[str, object]]] = None,
+        snapshot: Optional[AgentRegistrySnapshot] = None,
     ) -> None:
         self.settings = settings
         self.embeddings = embeddings
         self.tigergraph_client = tigergraph_client
         self._agents: Dict[str, RagAgent] = {}
+        self._base_registry = base_registry or dict(settings.model_registry)
+        self._snapshot = snapshot or AgentRegistrySnapshot()
+        if snapshot:
+            self._apply_snapshot(snapshot)
 
     # ------------------------------------------------------------------
     # Agent management
@@ -116,14 +125,85 @@ class AgentOrchestrator:
         query_context = query_context or QueryContext()
 
         agents = [self._get_agent(name) for name in agent_names]
+        metadata_map = {name: self.settings.model_registry.get(name) or {} for name in agent_names}
         if mode == "parallel" and len(agents) > 1:
             tasks = [agent.arun(question, query_context) for agent in agents]
-            results = await asyncio.gather(*tasks)
+            raw_results = await asyncio.gather(*tasks)
         else:
-            results = []
+            raw_results = []
             for agent in agents:
-                results.append(await agent.arun(question, query_context))
+                raw_results.append(await agent.arun(question, query_context))
+
+        results: List[AgentQueryResult] = []
+        for item in raw_results:
+            metadata = metadata_map.get(item.agent) or {}
+            results.append(
+                AgentQueryResult(
+                    agent=item.agent,
+                    answer=item.answer,
+                    sources=item.sources,
+                    metadata=self._build_result_metadata(item.agent, metadata),
+                )
+            )
+
+        orchestrator_report = self._build_orchestrator_report(agent_names)
+        if orchestrator_report:
+            results.append(orchestrator_report)
         return results
+
+    # ------------------------------------------------------------------
+    # Snapshot synchronisation
+    # ------------------------------------------------------------------
+    def refresh(self, snapshot: AgentRegistrySnapshot) -> None:
+        self._snapshot = snapshot
+        self._apply_snapshot(snapshot)
+
+    def _apply_snapshot(self, snapshot: AgentRegistrySnapshot) -> None:
+        combined = dict(self._base_registry)
+        combined.update(snapshot.registry)
+        self.settings.model_registry = combined
+        self._agents = {name: agent for name, agent in self._agents.items() if name in combined}
+
+    # ------------------------------------------------------------------
+    # Metadata helpers
+    # ------------------------------------------------------------------
+    def _build_result_metadata(self, agent_name: str, config: Dict[str, object]) -> Dict[str, object]:
+        metadata: Dict[str, object] = {}
+        if config:
+            metadata.update({k: v for k, v in config.items() if k not in {"provider", "model", "temperature"}})
+        if self._snapshot.validator and config.get("requires_human_validation", False):
+            metadata.setdefault("validation", {})
+            validation_block = metadata["validation"]  # type: ignore[assignment]
+            if isinstance(validation_block, dict):
+                validation_block.update(
+                    {
+                        "required": True,
+                        "validator": self._snapshot.validator,
+                        "instructions": config.get("validator_instructions"),
+                    }
+                )
+        if self._snapshot.tools:
+            metadata.setdefault("tool_inventory", self._snapshot.tools)
+        return metadata
+
+    def _build_orchestrator_report(self, agent_names: Sequence[str]) -> AgentQueryResult | None:
+        orchestrator_name = self._snapshot.orchestrator_agent or self.settings.default_agent
+        if orchestrator_name in agent_names:
+            return None
+        concerns: List[str] = []
+        for name in agent_names:
+            config = self.settings.model_registry.get(name, {})
+            if config.get("requires_human_validation", False) and self._snapshot.validator:
+                concerns.append(
+                    f"Agent '{name}' requires validation by {self._snapshot.validator.get('name')}"
+                )
+        metadata: Dict[str, object] = {
+            "concerns": concerns,
+            "orchestrator": orchestrator_name,
+            "validator": self._snapshot.validator,
+        }
+        summary = "; ".join(concerns) if concerns else "No outstanding validation concerns."
+        return AgentQueryResult(agent=orchestrator_name, answer=summary, sources=[], metadata=metadata)
 
 
 class TigerGraphClient:  # pragma: no cover - circular reference helper

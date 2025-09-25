@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>TigerChain Agent Builder</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background: #0f172a;
+        color: #f8fafc;
+      }
+      header {
+        background: linear-gradient(135deg, #1d4ed8, #22d3ee);
+        padding: 24px 32px;
+      }
+      header h1 {
+        margin: 0;
+        font-size: 28px;
+      }
+      main {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 24px;
+        padding: 32px;
+      }
+      section {
+        background: rgba(15, 23, 42, 0.85);
+        border-radius: 16px;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.4);
+        padding: 24px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      h2 {
+        margin-top: 0;
+        font-size: 20px;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+        padding-bottom: 12px;
+      }
+      label {
+        display: block;
+        margin-top: 12px;
+        font-size: 14px;
+        font-weight: bold;
+        color: #cbd5f5;
+      }
+      input,
+      textarea,
+      select {
+        width: 100%;
+        padding: 10px;
+        margin-top: 6px;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(15, 23, 42, 0.9);
+        color: #f8fafc;
+      }
+      textarea {
+        min-height: 80px;
+      }
+      button {
+        margin-top: 16px;
+        padding: 12px 20px;
+        border: none;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #2563eb, #22d3ee);
+        color: #0f172a;
+        font-weight: bold;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+      }
+      button:hover {
+        transform: translateY(-2px);
+      }
+      .list {
+        margin-top: 16px;
+        max-height: 220px;
+        overflow-y: auto;
+        background: rgba(30, 41, 59, 0.6);
+        border-radius: 12px;
+        padding: 12px;
+      }
+      .list-item {
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 8px 0;
+      }
+      .list-item:last-child {
+        border-bottom: none;
+      }
+      .status {
+        margin-top: 12px;
+        font-size: 14px;
+        color: #38bdf8;
+      }
+      .tag {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 9999px;
+        background: rgba(96, 165, 250, 0.2);
+        margin-right: 6px;
+        font-size: 12px;
+      }
+      @media (max-width: 768px) {
+        main {
+          grid-template-columns: 1fr;
+          padding: 16px;
+        }
+        section {
+          padding: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>TigerChain Agent Builder</h1>
+      <p>Create role-based agents, associate knowledge bases, and curate tool inventories with human validation flows.</p>
+    </header>
+    <main>
+      <section>
+        <h2>Knowledge Bases</h2>
+        <label for="kb-name">Name</label>
+        <input id="kb-name" placeholder="e.g. Product Architecture" />
+        <label for="kb-tags">Tags (comma separated)</label>
+        <input id="kb-tags" placeholder="architecture, roadmap" />
+        <label for="kb-docs">Document IDs (comma separated)</label>
+        <input id="kb-docs" placeholder="doc::alpha, doc::beta" />
+        <label for="kb-description">Description</label>
+        <textarea id="kb-description" placeholder="Focus area for this knowledge base"></textarea>
+        <button onclick="createKnowledgeBase()">Create Knowledge Base</button>
+        <div class="status" id="kb-status"></div>
+        <div class="list" id="kb-list"></div>
+      </section>
+
+      <section>
+        <h2>Agent Profiles</h2>
+        <label for="agent-name">Name</label>
+        <input id="agent-name" placeholder="e.g. architecture_planner" />
+        <label for="agent-role">Role Type</label>
+        <select id="agent-role">
+          <option value="chat">Chat Specialist</option>
+          <option value="team_member">Team Member</option>
+          <option value="orchestrator">Orchestrator</option>
+        </select>
+        <label for="agent-description">Description</label>
+        <textarea id="agent-description" placeholder="Describe responsibilities"></textarea>
+        <label for="agent-knowledge">Knowledge Base ID</label>
+        <input id="agent-knowledge" placeholder="Numeric knowledge base id" />
+        <label for="agent-tags">Tags</label>
+        <input id="agent-tags" placeholder="governance, infra" />
+        <label for="agent-validation">Requires Human Validation</label>
+        <select id="agent-validation">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+        <button onclick="createAgent()">Create Agent</button>
+        <div class="status" id="agent-status"></div>
+        <div class="list" id="agent-list"></div>
+      </section>
+
+      <section>
+        <h2>Teams & Validator</h2>
+        <label for="team-name">Team Name</label>
+        <input id="team-name" placeholder="Discovery Squad" />
+        <label for="team-orchestrator">Orchestrator Agent</label>
+        <input id="team-orchestrator" placeholder="orchestrator alias" />
+        <label for="team-members">Members (agent_id:priority)</label>
+        <input id="team-members" placeholder="1:0,2:1" />
+        <button onclick="createTeam()">Create Team</button>
+        <div class="status" id="team-status"></div>
+        <div class="list" id="team-list"></div>
+        <hr />
+        <label for="validator-name">Validator Name</label>
+        <input id="validator-name" placeholder="Program Manager" />
+        <label for="validator-contact">Contact Info</label>
+        <input id="validator-contact" placeholder="ops@example.com" />
+        <label for="validator-instructions">Instructions</label>
+        <textarea id="validator-instructions" placeholder="Escalate blockers and confirm delivery priority"></textarea>
+        <button onclick="setValidator()">Save Validator</button>
+        <div class="status" id="validator-status"></div>
+      </section>
+    </main>
+
+    <script>
+      const tokenKey = "tigerchain_token";
+
+      async function apiRequest(path, method = "GET", body) {
+        const token = localStorage.getItem(tokenKey) || "";
+        const headers = { "Content-Type": "application/json" };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+        const response = await fetch(path, {
+          method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || response.statusText);
+        }
+        return response.json();
+      }
+
+      async function refreshSnapshot() {
+        try {
+          const data = await apiRequest("/builder/snapshot");
+          renderKnowledgeBases(data.knowledge_bases);
+          renderAgents(Object.entries(data.registry));
+          renderTeams(data.teams);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      function renderKnowledgeBases(items) {
+        const container = document.getElementById("kb-list");
+        container.innerHTML = items
+          .map(
+            (kb) => `
+          <div class="list-item">
+            <strong>${kb.name}</strong> (ID: ${kb.id || "pending"})<br />
+            <small>${kb.description || "No description"}</small><br />
+            ${kb.tags.map((tag) => `<span class="tag">${tag}</span>`).join(" ")}
+          </div>`
+          )
+          .join("") || "<p>No knowledge bases yet.</p>";
+      }
+
+      function renderAgents(entries) {
+        const container = document.getElementById("agent-list");
+        container.innerHTML = entries
+          .map(([name, config]) => `
+          <div class="list-item">
+            <strong>${name}</strong> <span class="tag">${config.role_type || "chat"}</span><br />
+            <small>${config.role || "No role description"}</small><br />
+            ${Array.isArray(config.tags) ? config.tags.map((tag) => `<span class="tag">${tag}</span>`).join(" ") : ""}
+          </div>`
+          )
+          .join("") || "<p>No agents configured.</p>";
+      }
+
+      function renderTeams(items) {
+        const container = document.getElementById("team-list");
+        container.innerHTML = items
+          .map(
+            (team) => `
+          <div class="list-item">
+            <strong>${team.name}</strong> (Orchestrator: ${team.orchestrator_agent || "default"})<br />
+            <small>${team.description || "No description"}</small><br />
+            Members: ${
+              team.members && team.members.length
+                ? team.members.map((m) => `${m.agent_id} (p${m.priority})`).join(", ")
+                : "None"
+            }
+          </div>`
+          )
+          .join("") || "<p>No teams yet.</p>";
+      }
+
+      async function createKnowledgeBase() {
+        const name = document.getElementById("kb-name").value.trim();
+        if (!name) {
+          return;
+        }
+        const payload = {
+          name,
+          tags: document.getElementById("kb-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+          document_ids: document.getElementById("kb-docs").value.split(",").map((t) => t.trim()).filter(Boolean),
+          description: document.getElementById("kb-description").value,
+        };
+        try {
+          await apiRequest("/builder/knowledge-bases", "POST", payload);
+          document.getElementById("kb-status").innerText = "Knowledge base created.";
+          refreshSnapshot();
+        } catch (err) {
+          document.getElementById("kb-status").innerText = `Error: ${err.message}`;
+        }
+      }
+
+      async function createAgent() {
+        const name = document.getElementById("agent-name").value.trim();
+        if (!name) {
+          return;
+        }
+        const payload = {
+          name,
+          role_type: document.getElementById("agent-role").value,
+          description: document.getElementById("agent-description").value,
+          knowledge_base_id: parseInt(document.getElementById("agent-knowledge").value || "0", 10) || null,
+          tags: document.getElementById("agent-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+          requires_human_validation: document.getElementById("agent-validation").value === "true",
+        };
+        try {
+          await apiRequest("/builder/agents", "POST", payload);
+          document.getElementById("agent-status").innerText = "Agent created.";
+          refreshSnapshot();
+        } catch (err) {
+          document.getElementById("agent-status").innerText = `Error: ${err.message}`;
+        }
+      }
+
+      async function createTeam() {
+        const name = document.getElementById("team-name").value.trim();
+        if (!name) {
+          return;
+        }
+        const members = document
+          .getElementById("team-members")
+          .value.split(",")
+          .map((pair) => pair.trim())
+          .filter(Boolean)
+          .map((pair) => {
+            const [agentId, priority] = pair.split(":");
+            return {
+              agent_id: parseInt(agentId, 10),
+              priority: priority ? parseInt(priority, 10) : 0,
+            };
+          });
+        const payload = {
+          name,
+          orchestrator_agent: document.getElementById("team-orchestrator").value || null,
+          members,
+        };
+        try {
+          await apiRequest("/builder/teams", "POST", payload);
+          document.getElementById("team-status").innerText = "Team saved.";
+          refreshSnapshot();
+        } catch (err) {
+          document.getElementById("team-status").innerText = `Error: ${err.message}`;
+        }
+      }
+
+      async function setValidator() {
+        const name = document.getElementById("validator-name").value.trim();
+        if (!name) {
+          return;
+        }
+        const payload = {
+          name,
+          contact: document.getElementById("validator-contact").value,
+          instructions: document.getElementById("validator-instructions").value,
+        };
+        try {
+          await apiRequest("/builder/validator", "POST", payload);
+          document.getElementById("validator-status").innerText = "Validator updated.";
+          refreshSnapshot();
+        } catch (err) {
+          document.getElementById("validator-status").innerText = `Error: ${err.message}`;
+        }
+      }
+
+      refreshSnapshot();
+    </script>
+  </body>
+</html>
