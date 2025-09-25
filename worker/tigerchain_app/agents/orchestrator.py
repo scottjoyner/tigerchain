@@ -21,6 +21,7 @@ class QueryContext:
     owner_id: Optional[str] = None
     categories: Optional[Iterable[str]] = None
     model_alias: Optional[str] = None
+    embedding_scope: Optional[str] = None
 
 
 @dataclass
@@ -62,6 +63,7 @@ class RagAgent:
             owner_id=context.owner_id,
             categories=categories,
             model_alias=context.model_alias or self.name,
+            embedding_scope=context.embedding_scope,
         )
         logger.debug("Agent %s executing query with filters: %s", self.name, retrieval_context)
         with retriever.use_context(retrieval_context):

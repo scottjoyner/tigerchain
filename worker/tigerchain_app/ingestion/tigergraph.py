@@ -60,12 +60,12 @@ class TigerGraphClient:
         for row in rows:
             self.conn.upsertVertex("Document", row.id, row.to_upsert_payload()["attributes"])
 
-    def top_k_similar(self, embedding: Iterable[float], top_k: int) -> dict:
+    def top_k_similar(self, embedding: Iterable[float | int], top_k: int, embedding_type: str = "public") -> dict:
         token = self.get_token()
         response = requests.post(
             f"http://{self.settings.tg_host}:{self.settings.tg_rest_port}/query/{self.settings.tg_graph}/SimilarChunks",
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={"query_embedding": list(embedding), "topk": top_k},
+            json={"query_embedding": list(embedding), "topk": top_k, "embedding_type": embedding_type},
             timeout=120,
         )
         response.raise_for_status()

@@ -52,6 +52,10 @@ class DocumentRecord(BaseModel):
     object_uri: Optional[str]
     http_url: Optional[str]
     metadata: Optional[dict]
+    submission_id: Optional[str]
+    embedding_scope: Optional[str]
+    sharing_preference: Optional[str]
+    private_embedding_uri: Optional[str]
     created_at: datetime
 
     class Config:

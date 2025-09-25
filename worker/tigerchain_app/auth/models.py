@@ -39,4 +39,8 @@ class DocumentUpload(SQLModel, table=True):
     object_uri: Optional[str] = Field(default=None)
     http_url: Optional[str] = Field(default=None)
     metadata: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    submission_id: Optional[str] = Field(default=None, index=True)
+    embedding_scope: Optional[str] = Field(default=None, index=True)
+    sharing_preference: Optional[str] = Field(default=None, index=True)
+    private_embedding_uri: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)

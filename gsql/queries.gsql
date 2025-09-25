@@ -79,7 +79,41 @@ CREATE QUERY TopKSimilarChunks(LIST<FLOAT> q, INT topk) FOR GRAPH DocGraph SYNTA
                 (CASE WHEN (R.@norm*R.@qnorm)==0 THEN 0 ELSE (R.@dot/(R.@norm*R.@qnorm)) END) AS score];
 }
 
+CREATE QUERY SimilarChunks(LIST<FLOAT> q, INT topk, STRING embedding_type) FOR GRAPH DocGraph SYNTAX v2 {
+  SumAccum<FLOAT> @dot; SumAccum<FLOAT> @norm; SumAccum<FLOAT> @qnorm;
+  FLOAT qnorm = 0.0; INT n = q.size(); INT i = 0;
+  WHILE i < n DO qnorm += q[i]*q[i]; i = i + 1; END; qnorm = sqrt(qnorm);
+
+  Start = {Document.*};
+  Start = SELECT d FROM Start:d POST-ACCUM
+    d.@dot=0.0, d.@norm=0.0, d.@qnorm=qnorm,
+    i=0, WHILE i<n DO
+      CASE
+        WHEN embedding_type == "private" THEN
+          CASE WHEN i<d.private_embedding.size() THEN
+            d.@dot += d.private_embedding[i]*q[i];
+            d.@norm += d.private_embedding[i]*d.private_embedding[i];
+          END
+        ELSE
+          CASE WHEN i<d.embedding.size() THEN
+            d.@dot += d.embedding[i]*q[i];
+            d.@norm += d.embedding[i]*d.embedding[i];
+          END
+      END, i=i+1 END;
+
+  Ranked = SELECT d FROM Start:d
+    ACCUM d.@norm = sqrt(d.@norm)
+    ORDER BY CASE WHEN (d.@norm*d.@qnorm)==0 THEN 0 ELSE (d.@dot/(d.@norm*d.@qnorm)) END DESC LIMIT topk;
+
+  PRINT Ranked[Ranked.id AS id, Ranked.doc_id AS doc_id, Ranked.chunk_id AS chunk_id, Ranked.title AS title,
+               Ranked.source AS source, Ranked.uri AS uri, Ranked.http_url AS http_url,
+               Ranked.metadata AS metadata, Ranked.content AS content,
+               Ranked.submission_id AS submission_id,
+               (CASE WHEN (Ranked.@norm*Ranked.@qnorm)==0 THEN 0 ELSE (Ranked.@dot/(Ranked.@norm*Ranked.@qnorm)) END) AS score];
+}
+
 INSTALL QUERY TopKSimilarDocs
 INSTALL QUERY TopKSimilarPages
 INSTALL QUERY TopKSimilarChunks
+INSTALL QUERY SimilarChunks
 

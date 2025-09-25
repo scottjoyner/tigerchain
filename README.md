@@ -111,8 +111,14 @@ The `rag-api` container image bundles a Typer CLI for local operations. Use
 - `POST /auth/onboarding` – Store the user's preferred agent and categories.
 - `POST /ingest` – Accepts one or more file uploads with optional metadata,
   parses + ingests them into TigerGraph, and returns ingestion details.
+  - New form fields: `embedding_scope` (`public`/`private`/`both`), `sharing_preference`
+    (`public`/`private`/`both`), and optional `submission_id` to tag the upload.
+  - Response includes the `submission_id`, embedding scope, and the MinIO URI of
+    the private bitwise embedding artifact.
 - `POST /query` – Accepts JSON `{ "question": "...", "mode": "sequential"|"parallel", ... }`
   and returns agent-specific answers plus source metadata.
+  - Optional `embedding_scope` flag allows users to switch between dense
+    (public) and bitwise (private) retrieval modes on demand.
 - `GET /agents` – Lists configured model agents.
 - `GET /documents` – Returns the authenticated user's recent document uploads.
 - `GET /healthz` – Basic liveness check.
@@ -121,7 +127,8 @@ Both endpoints rely on the shared application context which:
 
 1. Bootstraps TigerGraph using the bundled `gsql/schema.gsql` and
    `gsql/queries.gsql` scripts.
-2. Loads a HuggingFace embedding model (`EMBED_MODEL`).
+2. Loads a HuggingFace embedding model (`EMBED_MODEL`) wrapped by the
+   `DualEmbeddingProvider` to generate dense + bitwise vectors per chunk.
 3. Configures MinIO for document storage.
 4. Creates a LangChain retriever using the TigerGraph `SimilarChunks` query.
 5. Instantiates the configured LLM provider and builds a RetrievalQA chain.
@@ -144,7 +151,9 @@ To run local models:
 - Preload Ollama models with `docker compose exec ollama ollama pull llama2` etc.
 
 Embeddings default to `sentence-transformers/all-MiniLM-L6-v2`. Override with
-`EMBED_MODEL`, `EMBED_DEVICE`, and `EMBED_BATCH_SIZE` to match hardware.
+`EMBED_MODEL`, `EMBED_DEVICE`, and `EMBED_BATCH_SIZE` to match hardware. The
+`BITWISE_THRESHOLD` setting controls how dense vectors are binarised for private
+embedding generation.
 
 ## Authentication & Persistence
 
