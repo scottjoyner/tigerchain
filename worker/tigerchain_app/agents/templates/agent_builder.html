@@ -2,188 +2,739 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>TigerChain Agent Builder</title>
     <style>
+      :root {
+        color-scheme: dark light;
+        --bg-primary: #0b1120;
+        --bg-secondary: #111c36;
+        --bg-elevated: rgba(15, 23, 42, 0.85);
+        --text-primary: #f8fafc;
+        --text-muted: #cbd5f5;
+        --accent: #38bdf8;
+        --accent-strong: #2563eb;
+        --border: rgba(148, 163, 184, 0.25);
+        --success: #22c55e;
+        --error: #f87171;
+        font-family: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        line-height: 1.5;
+      }
+
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg-primary: #f8fafc;
+          --bg-secondary: #e2e8f0;
+          --bg-elevated: #ffffff;
+          --text-primary: #0f172a;
+          --text-muted: #334155;
+          --accent: #2563eb;
+          --accent-strong: #1d4ed8;
+          --border: rgba(30, 41, 59, 0.15);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
-        font-family: Arial, sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at top left, rgba(37, 99, 235, 0.15), transparent 55%),
+          var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 16px;
+      }
+
+      a,
+      button,
+      input,
+      select,
+      textarea {
+        font: inherit;
+      }
+
+      .skip-link {
+        position: absolute;
+        top: 0.5rem;
+        left: 0.5rem;
+        background: var(--accent-strong);
+        color: #fff;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        transform: translateY(-200%);
+        transition: transform 0.2s ease;
+        z-index: 1000;
+      }
+
+      .skip-link:focus {
+        transform: translateY(0);
+      }
+
+      header {
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.92), rgba(34, 211, 238, 0.85));
+        color: #0f172a;
+        padding: 2.5rem clamp(1.5rem, 5vw, 3.5rem);
+        position: relative;
+        overflow: hidden;
+      }
+
+      header::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at top right, rgba(15, 23, 42, 0.2), transparent 55%);
+        pointer-events: none;
+      }
+
+      header h1 {
+        margin: 0 0 0.75rem;
+        font-size: clamp(2rem, 4vw, 2.75rem);
+        letter-spacing: -0.01em;
+      }
+
+      header p {
+        margin: 0;
+        max-width: 60ch;
+        font-size: clamp(1rem, 2vw, 1.125rem);
+      }
+
+      nav {
+        margin-top: 1.5rem;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      nav a {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 1.2rem;
+        border-radius: 9999px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: rgba(255, 255, 255, 0.16);
+        color: inherit;
+        text-decoration: none;
+        font-weight: 600;
+        transition: transform 0.2s ease, background 0.2s ease;
+      }
+
+      nav a:focus-visible,
+      nav a:hover {
+        transform: translateY(-1px);
+        background: rgba(255, 255, 255, 0.28);
+        outline: 3px solid rgba(15, 23, 42, 0.3);
+        outline-offset: 3px;
+      }
+
+      main {
+        padding: clamp(1.5rem, 4vw, 3.5rem);
+        display: grid;
+        gap: clamp(1.5rem, 3vw, 2.5rem);
+      }
+
+      section {
+        background: var(--bg-elevated);
+        border-radius: 1.25rem;
+        border: 1px solid var(--border);
+        padding: clamp(1.75rem, 3vw, 2.5rem);
+        box-shadow: 0 25px 45px rgba(15, 23, 42, 0.35);
+      }
+
+      section:focus-within {
+        outline: 2px solid var(--accent);
+        outline-offset: 4px;
+      }
+
+      h2 {
+        margin: 0 0 1rem;
+        font-size: clamp(1.35rem, 2.5vw, 1.6rem);
+      }
+
+      p.section-intro {
+        margin: -0.5rem 0 1.25rem;
+        color: var(--text-muted);
+      }
+
+      form {
+        display: grid;
+        gap: 1rem;
+      }
+
+      fieldset {
+        border: none;
         margin: 0;
         padding: 0;
-        background: #0f172a;
-        color: #f8fafc;
-      }
-      header {
-        background: linear-gradient(135deg, #1d4ed8, #22d3ee);
-        padding: 24px 32px;
-      }
-      header h1 {
-        margin: 0;
-        font-size: 28px;
-      }
-      main {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        gap: 24px;
-        padding: 32px;
+        gap: 1rem;
       }
-      section {
-        background: rgba(15, 23, 42, 0.85);
-        border-radius: 16px;
-        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.4);
-        padding: 24px;
-        border: 1px solid rgba(148, 163, 184, 0.2);
+
+      legend {
+        font-weight: 600;
+        margin-bottom: 0.25rem;
       }
-      h2 {
-        margin-top: 0;
-        font-size: 20px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-        padding-bottom: 12px;
+
+      .form-group {
+        display: grid;
+        gap: 0.35rem;
       }
+
       label {
-        display: block;
-        margin-top: 12px;
-        font-size: 14px;
-        font-weight: bold;
-        color: #cbd5f5;
+        font-weight: 600;
+        font-size: 0.95rem;
       }
+
+      .input-wrapper {
+        position: relative;
+      }
+
       input,
       textarea,
       select {
         width: 100%;
-        padding: 10px;
-        margin-top: 6px;
-        border-radius: 8px;
-        border: 1px solid rgba(148, 163, 184, 0.3);
-        background: rgba(15, 23, 42, 0.9);
-        color: #f8fafc;
+        padding: 0.75rem 0.85rem;
+        border-radius: 0.85rem;
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 42, 0.75);
+        color: var(--text-primary);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
       }
+
+      input:focus-visible,
+      textarea:focus-visible,
+      select:focus-visible {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+        outline: none;
+      }
+
       textarea {
-        min-height: 80px;
+        min-height: 120px;
+        resize: vertical;
       }
+
+      .helper-text {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
+      }
+
       button {
-        margin-top: 16px;
-        padding: 12px 20px;
         border: none;
-        border-radius: 10px;
-        background: linear-gradient(135deg, #2563eb, #22d3ee);
+        border-radius: 0.85rem;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
         color: #0f172a;
-        font-weight: bold;
+        background: linear-gradient(135deg, var(--accent-strong), var(--accent));
         cursor: pointer;
-        transition: transform 0.2s ease;
+        transition: transform 0.2s ease, filter 0.2s ease;
       }
-      button:hover {
-        transform: translateY(-2px);
+
+      button:hover,
+      button:focus-visible {
+        transform: translateY(-1px);
+        filter: brightness(1.08);
+        outline: none;
       }
-      .list {
-        margin-top: 16px;
-        max-height: 220px;
+
+      button:disabled {
+        opacity: 0.65;
+        cursor: progress;
+        transform: none;
+      }
+
+      .status {
+        min-height: 1.5rem;
+        font-size: 0.9rem;
+        color: var(--accent);
+      }
+
+      .status[data-status="error"] {
+        color: var(--error);
+      }
+
+      .status[data-status="success"] {
+        color: var(--success);
+      }
+
+      .status:empty::before {
+        content: attr(data-placeholder);
+        color: var(--text-muted);
+      }
+
+      .list-wrapper {
+        margin-top: 1.5rem;
+      }
+
+      .list-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 0.75rem;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
+      ul.list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.75rem;
+        max-height: 300px;
         overflow-y: auto;
-        background: rgba(30, 41, 59, 0.6);
-        border-radius: 12px;
-        padding: 12px;
+        border-radius: 1rem;
+        background: rgba(15, 23, 42, 0.55);
+        border: 1px solid var(--border);
+        padding: 1rem;
       }
+
+      ul.list[aria-busy="true"] {
+        opacity: 0.5;
+      }
+
       .list-item {
-        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-        padding: 8px 0;
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.18);
       }
+
       .list-item:last-child {
         border-bottom: none;
+        padding-bottom: 0;
       }
-      .status {
-        margin-top: 12px;
-        font-size: 14px;
-        color: #38bdf8;
+
+      .list-item strong {
+        display: block;
+        font-size: 1rem;
+        margin-bottom: 0.35rem;
       }
+
+      .meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        align-items: center;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+      }
+
       .tag {
-        display: inline-block;
-        padding: 4px 8px;
-        border-radius: 9999px;
-        background: rgba(96, 165, 250, 0.2);
-        margin-right: 6px;
-        font-size: 12px;
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.6rem;
+        border-radius: 999px;
+        background: rgba(96, 165, 250, 0.22);
+        color: var(--text-primary);
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
       }
-      @media (max-width: 768px) {
+
+      .empty-state {
+        text-align: center;
+        padding: 1.5rem 1rem;
+        color: var(--text-muted);
+        font-size: 0.95rem;
+      }
+
+      footer {
+        padding: 2rem clamp(1.5rem, 4vw, 3.5rem);
+        color: var(--text-muted);
+        font-size: 0.85rem;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        border: 0;
+      }
+
+      @media (min-width: 960px) {
         main {
-          grid-template-columns: 1fr;
-          padding: 16px;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
         }
-        section {
-          padding: 18px;
+
+        section:nth-of-type(1) {
+          grid-column: span 1;
+        }
+
+        section:nth-of-type(2) {
+          grid-column: span 1;
+        }
+
+        section:nth-of-type(3) {
+          grid-column: span 1;
+        }
+      }
+
+      @media (max-width: 768px) {
+        header {
+          text-align: left;
+        }
+
+        nav {
+          justify-content: flex-start;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
         }
       }
     </style>
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
     <header>
       <h1>TigerChain Agent Builder</h1>
-      <p>Create role-based agents, associate knowledge bases, and curate tool inventories with human validation flows.</p>
+      <p>
+        Craft collaborative AI teams by curating reusable knowledge bases, configuring role-based agents,
+        and coordinating team orchestrations with human validators for oversight.
+      </p>
+      <nav aria-label="Page sections">
+        <a href="#knowledge-bases">Knowledge Bases</a>
+        <a href="#agent-profiles">Agent Profiles</a>
+        <a href="#teams-validator">Teams &amp; Validator</a>
+      </nav>
     </header>
-    <main>
-      <section>
-        <h2>Knowledge Bases</h2>
-        <label for="kb-name">Name</label>
-        <input id="kb-name" placeholder="e.g. Product Architecture" />
-        <label for="kb-tags">Tags (comma separated)</label>
-        <input id="kb-tags" placeholder="architecture, roadmap" />
-        <label for="kb-docs">Document IDs (comma separated)</label>
-        <input id="kb-docs" placeholder="doc::alpha, doc::beta" />
-        <label for="kb-description">Description</label>
-        <textarea id="kb-description" placeholder="Focus area for this knowledge base"></textarea>
-        <button onclick="createKnowledgeBase()">Create Knowledge Base</button>
-        <div class="status" id="kb-status"></div>
-        <div class="list" id="kb-list"></div>
+
+    <main id="main-content">
+      <section id="knowledge-bases" aria-labelledby="knowledge-bases-title">
+        <div>
+          <h2 id="knowledge-bases-title">Knowledge Bases</h2>
+          <p class="section-intro">
+            Describe curated information spaces that agents will rely on. Helpful metadata improves search accuracy and
+            discoverability for teammates.
+          </p>
+        </div>
+        <form id="kb-form" aria-describedby="kb-helper">
+          <fieldset>
+            <legend class="sr-only">Create knowledge base</legend>
+            <div class="form-group">
+              <label for="kb-name">Name <span aria-hidden="true">*</span></label>
+              <span class="helper-text" id="kb-helper">Use concise, descriptive titles that reflect the scope.</span>
+              <div class="input-wrapper">
+                <input
+                  id="kb-name"
+                  name="kb-name"
+                  type="text"
+                  placeholder="e.g. Product Architecture"
+                  required
+                  autocomplete="off"
+                  aria-required="true"
+                  aria-describedby="kb-helper"
+                />
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="kb-tags">Tags</label>
+              <span class="helper-text">Comma separated keywords for quick filtering.</span>
+              <input
+                id="kb-tags"
+                name="kb-tags"
+                type="text"
+                placeholder="architecture, roadmap"
+                autocomplete="off"
+              />
+            </div>
+            <div class="form-group">
+              <label for="kb-docs">Document IDs</label>
+              <span class="helper-text">Provide existing document identifiers separated by commas.</span>
+              <input
+                id="kb-docs"
+                name="kb-docs"
+                type="text"
+                placeholder="doc::alpha, doc::beta"
+                autocomplete="off"
+              />
+            </div>
+            <div class="form-group">
+              <label for="kb-description">Description</label>
+              <textarea
+                id="kb-description"
+                name="kb-description"
+                placeholder="Explain the focus area for this knowledge base"
+                aria-describedby="kb-desc-help"
+              ></textarea>
+              <span class="helper-text" id="kb-desc-help">
+                Summaries with objectives or data freshness cues help collaborators know when to update content.
+              </span>
+            </div>
+          </fieldset>
+          <div class="actions">
+            <button type="submit" id="kb-submit">Create Knowledge Base</button>
+            <div
+              class="status"
+              id="kb-status"
+              role="status"
+              aria-live="polite"
+              data-placeholder="Status updates appear here."
+            ></div>
+          </div>
+        </form>
+        <div class="list-wrapper" aria-live="polite">
+          <div class="list-header" id="kb-list-header">
+            <span>Existing knowledge bases</span>
+            <span class="helper-text">Newest first</span>
+          </div>
+          <ul class="list" id="kb-list" role="list" aria-busy="false"></ul>
+        </div>
       </section>
 
-      <section>
-        <h2>Agent Profiles</h2>
-        <label for="agent-name">Name</label>
-        <input id="agent-name" placeholder="e.g. architecture_planner" />
-        <label for="agent-role">Role Type</label>
-        <select id="agent-role">
-          <option value="chat">Chat Specialist</option>
-          <option value="team_member">Team Member</option>
-          <option value="orchestrator">Orchestrator</option>
-        </select>
-        <label for="agent-description">Description</label>
-        <textarea id="agent-description" placeholder="Describe responsibilities"></textarea>
-        <label for="agent-knowledge">Knowledge Base ID</label>
-        <input id="agent-knowledge" placeholder="Numeric knowledge base id" />
-        <label for="agent-tags">Tags</label>
-        <input id="agent-tags" placeholder="governance, infra" />
-        <label for="agent-validation">Requires Human Validation</label>
-        <select id="agent-validation">
-          <option value="true">Yes</option>
-          <option value="false">No</option>
-        </select>
-        <button onclick="createAgent()">Create Agent</button>
-        <div class="status" id="agent-status"></div>
-        <div class="list" id="agent-list"></div>
+      <section id="agent-profiles" aria-labelledby="agent-profiles-title">
+        <div>
+          <h2 id="agent-profiles-title">Agent Profiles</h2>
+          <p class="section-intro">
+            Align specialized assistants to knowledge bases and workflows. Configure expectations and hand-offs to keep
+            responses contextual.
+          </p>
+        </div>
+        <form id="agent-form">
+          <fieldset>
+            <legend class="sr-only">Create agent</legend>
+            <div class="form-group">
+              <label for="agent-name">Name <span aria-hidden="true">*</span></label>
+              <input
+                id="agent-name"
+                name="agent-name"
+                type="text"
+                placeholder="e.g. architecture_planner"
+                required
+                aria-required="true"
+                autocomplete="off"
+              />
+            </div>
+            <div class="form-group">
+              <label for="agent-role">Role type</label>
+              <span class="helper-text">Choose how this agent participates in conversations.</span>
+              <select id="agent-role" name="agent-role">
+                <option value="chat">Chat Specialist</option>
+                <option value="team_member">Team Member</option>
+                <option value="orchestrator">Orchestrator</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="agent-description">Description</label>
+              <textarea
+                id="agent-description"
+                name="agent-description"
+                placeholder="Describe responsibilities, tone, and escalation paths"
+              ></textarea>
+            </div>
+            <div class="form-group">
+              <label for="agent-knowledge">Knowledge base ID</label>
+              <span class="helper-text">Optional numeric ID linking to a knowledge base.</span>
+              <input
+                id="agent-knowledge"
+                name="agent-knowledge"
+                type="number"
+                inputmode="numeric"
+                min="0"
+                placeholder="123"
+              />
+            </div>
+            <div class="form-group">
+              <label for="agent-tags">Tags</label>
+              <span class="helper-text">Comma separated specializations or focus areas.</span>
+              <input id="agent-tags" name="agent-tags" type="text" placeholder="governance, infra" autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label for="agent-validation">Requires human validation</label>
+              <select id="agent-validation" name="agent-validation">
+                <option value="true">Yes</option>
+                <option value="false" selected>No</option>
+              </select>
+            </div>
+          </fieldset>
+          <div class="actions">
+            <button type="submit" id="agent-submit">Create Agent</button>
+            <div
+              class="status"
+              id="agent-status"
+              role="status"
+              aria-live="polite"
+              data-placeholder="Status updates appear here."
+            ></div>
+          </div>
+        </form>
+        <div class="list-wrapper" aria-live="polite">
+          <div class="list-header">
+            <span>Configured agents</span>
+            <span class="helper-text">Includes validation requirements</span>
+          </div>
+          <ul class="list" id="agent-list" role="list" aria-busy="false"></ul>
+        </div>
       </section>
 
-      <section>
-        <h2>Teams & Validator</h2>
-        <label for="team-name">Team Name</label>
-        <input id="team-name" placeholder="Discovery Squad" />
-        <label for="team-orchestrator">Orchestrator Agent</label>
-        <input id="team-orchestrator" placeholder="orchestrator alias" />
-        <label for="team-members">Members (agent_id:priority)</label>
-        <input id="team-members" placeholder="1:0,2:1" />
-        <button onclick="createTeam()">Create Team</button>
-        <div class="status" id="team-status"></div>
-        <div class="list" id="team-list"></div>
-        <hr />
-        <label for="validator-name">Validator Name</label>
-        <input id="validator-name" placeholder="Program Manager" />
-        <label for="validator-contact">Contact Info</label>
-        <input id="validator-contact" placeholder="ops@example.com" />
-        <label for="validator-instructions">Instructions</label>
-        <textarea id="validator-instructions" placeholder="Escalate blockers and confirm delivery priority"></textarea>
-        <button onclick="setValidator()">Save Validator</button>
-        <div class="status" id="validator-status"></div>
+      <section id="teams-validator" aria-labelledby="teams-validator-title">
+        <div>
+          <h2 id="teams-validator-title">Teams &amp; Validator</h2>
+          <p class="section-intro">
+            Coordinate agents into collaborative pods and capture human validators who supervise deliverables for
+            compliance and quality assurance.
+          </p>
+        </div>
+        <form id="team-form">
+          <fieldset>
+            <legend class="sr-only">Create team</legend>
+            <div class="form-group">
+              <label for="team-name">Team name <span aria-hidden="true">*</span></label>
+              <input
+                id="team-name"
+                name="team-name"
+                type="text"
+                placeholder="Discovery Squad"
+                required
+                aria-required="true"
+                autocomplete="off"
+              />
+            </div>
+            <div class="form-group">
+              <label for="team-orchestrator">Orchestrator agent</label>
+              <span class="helper-text">Provide an agent alias responsible for routing work.</span>
+              <input id="team-orchestrator" name="team-orchestrator" type="text" placeholder="orchestrator alias" />
+            </div>
+            <div class="form-group">
+              <label for="team-members">Members (agent_id:priority)</label>
+              <span class="helper-text">Comma separated pairs, e.g. <code>1:0, 2:1</code>. Priority defaults to 0.</span>
+              <input id="team-members" name="team-members" type="text" placeholder="1:0, 2:1" autocomplete="off" />
+            </div>
+          </fieldset>
+          <div class="actions">
+            <button type="submit" id="team-submit">Create Team</button>
+            <div
+              class="status"
+              id="team-status"
+              role="status"
+              aria-live="polite"
+              data-placeholder="Status updates appear here."
+            ></div>
+          </div>
+        </form>
+
+        <div class="list-wrapper" aria-live="polite">
+          <div class="list-header">
+            <span>Active teams</span>
+            <span class="helper-text">Members sorted by priority</span>
+          </div>
+          <ul class="list" id="team-list" role="list" aria-busy="false"></ul>
+        </div>
+
+        <hr aria-hidden="true" />
+
+        <form id="validator-form">
+          <fieldset>
+            <legend class="sr-only">Validator details</legend>
+            <div class="form-group">
+              <label for="validator-name">Validator name <span aria-hidden="true">*</span></label>
+              <input
+                id="validator-name"
+                name="validator-name"
+                type="text"
+                placeholder="Program Manager"
+                required
+                aria-required="true"
+                autocomplete="name"
+              />
+            </div>
+            <div class="form-group">
+              <label for="validator-contact">Contact information</label>
+              <span class="helper-text">Share an email, chat handle, or URL for escalation.</span>
+              <input
+                id="validator-contact"
+                name="validator-contact"
+                type="text"
+                placeholder="ops@example.com"
+                autocomplete="email"
+              />
+            </div>
+            <div class="form-group">
+              <label for="validator-instructions">Instructions</label>
+              <textarea
+                id="validator-instructions"
+                name="validator-instructions"
+                placeholder="Escalate blockers and confirm delivery priority"
+              ></textarea>
+            </div>
+          </fieldset>
+          <div class="actions">
+            <button type="submit" id="validator-submit">Save Validator</button>
+            <div
+              class="status"
+              id="validator-status"
+              role="status"
+              aria-live="polite"
+              data-placeholder="Status updates appear here."
+            ></div>
+          </div>
+        </form>
       </section>
     </main>
 
+    <footer>
+      <p>
+        Tip: authenticate first via the <code>/auth/token</code> endpoint and paste the JWT below to unlock write access
+        without leaving this page.
+      </p>
+      <form id="token-form" aria-label="Authentication token">
+        <div class="form-group">
+          <label for="token-input">Reusable access token</label>
+          <input
+            id="token-input"
+            name="token-input"
+            type="text"
+            placeholder="Paste JWT token to authorize requests"
+            autocomplete="off"
+          />
+          <span class="helper-text">Stored locally in this browser only. Remove the value to clear credentials.</span>
+        </div>
+      </form>
+    </footer>
+
     <script>
       const tokenKey = "tigerchain_token";
+
+      function normalizeList(value) {
+        return value
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean);
+      }
+
+      function setStatus(id, message, type = "info") {
+        const statusEl = document.getElementById(`${id}-status`);
+        if (statusEl) {
+          statusEl.textContent = message;
+          statusEl.dataset.status = type;
+        }
+      }
+
+      function setBusy(elementId, isBusy) {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.setAttribute("aria-busy", isBusy ? "true" : "false");
+        }
+      }
 
       async function apiRequest(path, method = "GET", body) {
         const token = localStorage.getItem(tokenKey) || "";
@@ -200,158 +751,262 @@
           const errorText = await response.text();
           throw new Error(errorText || response.statusText);
         }
+        if (response.status === 204) {
+          return null;
+        }
         return response.json();
       }
 
       async function refreshSnapshot() {
+        setBusy("kb-list", true);
+        setBusy("agent-list", true);
+        setBusy("team-list", true);
         try {
           const data = await apiRequest("/builder/snapshot");
-          renderKnowledgeBases(data.knowledge_bases);
-          renderAgents(Object.entries(data.registry));
-          renderTeams(data.teams);
+          renderKnowledgeBases(data.knowledge_bases || []);
+          renderAgents(Object.entries(data.registry || {}));
+          renderTeams(data.teams || []);
         } catch (err) {
           console.error(err);
+          setStatus("kb", "Unable to load snapshot: " + err.message, "error");
+        } finally {
+          setBusy("kb-list", false);
+          setBusy("agent-list", false);
+          setBusy("team-list", false);
         }
       }
 
       function renderKnowledgeBases(items) {
         const container = document.getElementById("kb-list");
+        if (!container) return;
+        if (!items.length) {
+          container.innerHTML = '<li class="empty-state" role="note">No knowledge bases yet. Start by creating one above.</li>';
+          return;
+        }
         container.innerHTML = items
           .map(
             (kb) => `
-          <div class="list-item">
-            <strong>${kb.name}</strong> (ID: ${kb.id || "pending"})<br />
-            <small>${kb.description || "No description"}</small><br />
-            ${kb.tags.map((tag) => `<span class="tag">${tag}</span>`).join(" ")}
-          </div>`
+              <li class="list-item">
+                <strong>${kb.name}</strong>
+                <div class="meta">
+                  <span>ID: ${kb.id ?? "pending"}</span>
+                  ${kb.description ? `<span>${kb.description}</span>` : ""}
+                </div>
+                <div class="meta">
+                  ${(kb.tags || []).map((tag) => `<span class="tag">${tag}</span>`).join(" ") || "<span>No tags</span>"}
+                </div>
+              </li>
+            `
           )
-          .join("") || "<p>No knowledge bases yet.</p>";
+          .join("");
       }
 
       function renderAgents(entries) {
         const container = document.getElementById("agent-list");
+        if (!container) return;
+        if (!entries.length) {
+          container.innerHTML = '<li class="empty-state" role="note">No agents configured. Create one to see details here.</li>';
+          return;
+        }
         container.innerHTML = entries
-          .map(([name, config]) => `
-          <div class="list-item">
-            <strong>${name}</strong> <span class="tag">${config.role_type || "chat"}</span><br />
-            <small>${config.role || "No role description"}</small><br />
-            ${Array.isArray(config.tags) ? config.tags.map((tag) => `<span class="tag">${tag}</span>`).join(" ") : ""}
-          </div>`
-          )
-          .join("") || "<p>No agents configured.</p>";
+          .map(([name, config]) => {
+            const tags = Array.isArray(config.tags) ? config.tags : [];
+            return `
+              <li class="list-item">
+                <strong>${name}</strong>
+                <div class="meta">
+                  <span class="tag">${config.role_type || "chat"}</span>
+                  ${config.requires_human_validation ? '<span class="tag">Human validation</span>' : ""}
+                </div>
+                <div class="meta">
+                  ${config.role ? `<span>${config.role}</span>` : "<span>No role description</span>"}
+                </div>
+                <div class="meta">
+                  ${tags.length ? tags.map((tag) => `<span class="tag">${tag}</span>`).join(" ") : "<span>No tags</span>"}
+                </div>
+              </li>
+            `;
+          })
+          .join("");
       }
 
       function renderTeams(items) {
         const container = document.getElementById("team-list");
+        if (!container) return;
+        if (!items.length) {
+          container.innerHTML = '<li class="empty-state" role="note">No teams yet. Combine agents to orchestrate work.</li>';
+          return;
+        }
         container.innerHTML = items
-          .map(
-            (team) => `
-          <div class="list-item">
-            <strong>${team.name}</strong> (Orchestrator: ${team.orchestrator_agent || "default"})<br />
-            <small>${team.description || "No description"}</small><br />
-            Members: ${
-              team.members && team.members.length
-                ? team.members.map((m) => `${m.agent_id} (p${m.priority})`).join(", ")
-                : "None"
-            }
-          </div>`
-          )
-          .join("") || "<p>No teams yet.</p>";
+          .map((team) => `
+              <li class="list-item">
+                <strong>${team.name}</strong>
+                <div class="meta">
+                  <span>Orchestrator: ${team.orchestrator_agent || "default"}</span>
+                  ${team.description ? `<span>${team.description}</span>` : ""}
+                </div>
+                <div class="meta">
+                  ${
+                    team.members && team.members.length
+                      ? team.members
+                          .map((m) => `<span class="tag">${m.agent_id} (p${m.priority ?? 0})</span>`)
+                          .join(" ")
+                      : "<span>No assigned members</span>"
+                  }
+                </div>
+              </li>
+            `)
+          .join("");
       }
 
-      async function createKnowledgeBase() {
+      async function createKnowledgeBase(event) {
+        event?.preventDefault();
         const name = document.getElementById("kb-name").value.trim();
         if (!name) {
+          setStatus("kb", "Name is required to create a knowledge base.", "error");
+          document.getElementById("kb-name").focus();
           return;
         }
         const payload = {
           name,
-          tags: document.getElementById("kb-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
-          document_ids: document.getElementById("kb-docs").value.split(",").map((t) => t.trim()).filter(Boolean),
-          description: document.getElementById("kb-description").value,
+          tags: normalizeList(document.getElementById("kb-tags").value),
+          document_ids: normalizeList(document.getElementById("kb-docs").value),
+          description: document.getElementById("kb-description").value.trim() || null,
         };
+        setStatus("kb", "Saving knowledge base…");
+        document.getElementById("kb-submit").disabled = true;
         try {
           await apiRequest("/builder/knowledge-bases", "POST", payload);
-          document.getElementById("kb-status").innerText = "Knowledge base created.";
+          setStatus("kb", "Knowledge base created successfully.", "success");
+          document.getElementById("kb-form").reset();
           refreshSnapshot();
         } catch (err) {
-          document.getElementById("kb-status").innerText = `Error: ${err.message}`;
+          setStatus("kb", `Error: ${err.message}`, "error");
+        } finally {
+          document.getElementById("kb-submit").disabled = false;
         }
       }
 
-      async function createAgent() {
+      async function createAgent(event) {
+        event?.preventDefault();
         const name = document.getElementById("agent-name").value.trim();
         if (!name) {
+          setStatus("agent", "Agent name is required.", "error");
+          document.getElementById("agent-name").focus();
           return;
         }
         const payload = {
           name,
           role_type: document.getElementById("agent-role").value,
-          description: document.getElementById("agent-description").value,
-          knowledge_base_id: parseInt(document.getElementById("agent-knowledge").value || "0", 10) || null,
-          tags: document.getElementById("agent-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+          description: document.getElementById("agent-description").value.trim() || null,
+          knowledge_base_id:
+            parseInt(document.getElementById("agent-knowledge").value || "", 10) || null,
+          tags: normalizeList(document.getElementById("agent-tags").value),
           requires_human_validation: document.getElementById("agent-validation").value === "true",
         };
+        setStatus("agent", "Saving agent profile…");
+        document.getElementById("agent-submit").disabled = true;
         try {
           await apiRequest("/builder/agents", "POST", payload);
-          document.getElementById("agent-status").innerText = "Agent created.";
+          setStatus("agent", "Agent created successfully.", "success");
+          document.getElementById("agent-form").reset();
           refreshSnapshot();
         } catch (err) {
-          document.getElementById("agent-status").innerText = `Error: ${err.message}`;
+          setStatus("agent", `Error: ${err.message}`, "error");
+        } finally {
+          document.getElementById("agent-submit").disabled = false;
         }
       }
 
-      async function createTeam() {
+      async function createTeam(event) {
+        event?.preventDefault();
         const name = document.getElementById("team-name").value.trim();
         if (!name) {
+          setStatus("team", "Team name is required.", "error");
+          document.getElementById("team-name").focus();
           return;
         }
-        const members = document
-          .getElementById("team-members")
-          .value.split(",")
-          .map((pair) => pair.trim())
-          .filter(Boolean)
-          .map((pair) => {
-            const [agentId, priority] = pair.split(":");
-            return {
-              agent_id: parseInt(agentId, 10),
-              priority: priority ? parseInt(priority, 10) : 0,
-            };
-          });
+        const members = normalizeList(document.getElementById("team-members").value).map((pair) => {
+          const [agentId, priority] = pair.split(":");
+          const id = parseInt(agentId, 10);
+          return {
+            agent_id: Number.isFinite(id) ? id : null,
+            priority: priority ? parseInt(priority, 10) || 0 : 0,
+          };
+        });
         const payload = {
           name,
-          orchestrator_agent: document.getElementById("team-orchestrator").value || null,
-          members,
+          orchestrator_agent: document.getElementById("team-orchestrator").value.trim() || null,
+          members: members.filter((member) => member.agent_id !== null),
         };
+        setStatus("team", "Saving team…");
+        document.getElementById("team-submit").disabled = true;
         try {
           await apiRequest("/builder/teams", "POST", payload);
-          document.getElementById("team-status").innerText = "Team saved.";
+          setStatus("team", "Team saved successfully.", "success");
+          document.getElementById("team-form").reset();
           refreshSnapshot();
         } catch (err) {
-          document.getElementById("team-status").innerText = `Error: ${err.message}`;
+          setStatus("team", `Error: ${err.message}`, "error");
+        } finally {
+          document.getElementById("team-submit").disabled = false;
         }
       }
 
-      async function setValidator() {
+      async function setValidator(event) {
+        event?.preventDefault();
         const name = document.getElementById("validator-name").value.trim();
         if (!name) {
+          setStatus("validator", "Validator name is required.", "error");
+          document.getElementById("validator-name").focus();
           return;
         }
         const payload = {
           name,
-          contact: document.getElementById("validator-contact").value,
-          instructions: document.getElementById("validator-instructions").value,
+          contact: document.getElementById("validator-contact").value.trim() || null,
+          instructions: document.getElementById("validator-instructions").value.trim() || null,
         };
+        setStatus("validator", "Saving validator…");
+        document.getElementById("validator-submit").disabled = true;
         try {
           await apiRequest("/builder/validator", "POST", payload);
-          document.getElementById("validator-status").innerText = "Validator updated.";
+          setStatus("validator", "Validator updated successfully.", "success");
+          document.getElementById("validator-form").reset();
           refreshSnapshot();
         } catch (err) {
-          document.getElementById("validator-status").innerText = `Error: ${err.message}`;
+          setStatus("validator", `Error: ${err.message}`, "error");
+        } finally {
+          document.getElementById("validator-submit").disabled = false;
         }
       }
 
-      refreshSnapshot();
+      function hydrateTokenField() {
+        const tokenField = document.getElementById("token-input");
+        if (tokenField) {
+          tokenField.value = localStorage.getItem(tokenKey) || "";
+          tokenField.addEventListener("input", (event) => {
+            const value = event.target.value.trim();
+            if (value) {
+              localStorage.setItem(tokenKey, value);
+            } else {
+              localStorage.removeItem(tokenKey);
+            }
+          });
+        }
+      }
+
+      function registerEventListeners() {
+        document.getElementById("kb-form").addEventListener("submit", createKnowledgeBase);
+        document.getElementById("agent-form").addEventListener("submit", createAgent);
+        document.getElementById("team-form").addEventListener("submit", createTeam);
+        document.getElementById("validator-form").addEventListener("submit", setValidator);
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        hydrateTokenField();
+        registerEventListeners();
+        refreshSnapshot();
+      });
     </script>
   </body>
 </html>
