@@ -13,8 +13,7 @@ language models.
 | Service | Purpose |
 | ------- | ------- |
 | `tigergraph` | TigerGraph Enterprise database (requires valid license). |
-| `tigergraph-bootstrap` | One-shot schema + query installation. |
-| `minio` | S3-compatible object storage for original documents. |
+| `minio-tg` | S3-compatible object storage for original documents. |
 | `minio-setup` | Creates the configured MinIO bucket. |
 | `rag-api` | FastAPI app exposing onboarding, ingestion & question answering endpoints. |
 | `vllm` *(optional)* | OpenAI-compatible endpoint powered by [vLLM](https://vllm.ai/) (GPU). |
@@ -25,76 +24,175 @@ retrieval. TigerGraph stores each chunk as a `Document` vertex containing the
 source metadata, text content, and dense vector embedding. A `SimilarChunks`
 GSQL query performs cosine similarity search for retrieval.
 
-## Getting Started
+## Prerequisites
 
-1. Copy the sample environment file and update values as needed (notably the
-   TigerGraph license path):
+- **Docker** 24+ with Compose V2 for the containerised stack. The helper
+  scripts expect the `docker compose` subcommand to be available.
+- **Python** 3.10 or newer if you plan to run the FastAPI service or CLI from a
+  local virtual environment instead of the container image.
+- **GNU Make** (optional) for the convenience targets defined in the
+  repository's `Makefile`.
+- **jq** (optional) to parse JSON responses in the shell snippets below.
 
-   ```bash
-   cp .env.example .env
-   # edit .env to point TG_LICENSE_FILE to your enterprise-license.txt
-   ```
+Copy the sample environment and adjust any secrets or ports before starting:
 
-2. Launch the full stack:
+```bash
+cp .env.example .env
+# update credentials, ports, and LLM provider settings as needed
+```
+
+## Running with Docker Compose (recommended)
+
+1. **Start the services:**
 
    ```bash
    docker compose up -d --build
    ```
 
-   The bootstrap containers create the TigerGraph schema/queries and the MinIO
-   bucket automatically.
-
-3. Ingest the sample documents and run a test query via the CLI:
+2. **Initialize TigerGraph** once the database is reachable. The helper script
+   waits for REST++ and installs the schema, loaders, and queries:
 
    ```bash
-   make ingest
-   make query Q="What does the knowledge graph support?"
+   make dev-init
    ```
 
-4. Onboard a user and obtain an access token:
+3. **Seed sample content (optional):**
 
    ```bash
-   curl -X POST "http://localhost:${API_PORT}/auth/register" \
+   make dev-ingest
+   make dev-query Q="What does the knowledge graph support?"
+   ```
+
+4. **Monitor or stop the stack** using the provided wrappers:
+
+   ```bash
+   make dev-logs SERVICE=rag-api   # follow API logs
+   make dev-status                 # quick health checks
+   make dev-down                   # stop containers (volumes preserved)
+   make dev-clean                  # full teardown with volume prune
+   ```
+
+The `scripts/dev.sh` helpers that back these targets encapsulate common Docker
+Compose workflows such as rebuilds, exec, and health probing so you do not need
+to memorise lengthy commands.
+
+## Running the API locally (without the container)
+
+You can run the FastAPI worker in a local Python environment while keeping
+TigerGraph and MinIO inside containers for consistency.
+
+1. **Start infrastructure services** (TigerGraph, MinIO, bootstrap helpers):
+
+   ```bash
+   docker compose up -d tigergraph minio-tg minio-setup
+   make dev-init
+   ```
+
+2. **Create and activate a virtual environment:**
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install --upgrade pip
+   pip install -r worker/requirements.txt
+   ```
+
+3. **Expose configuration to the application.** The FastAPI service reads the
+   same `.env` file used by Docker. Ensure the relevant TigerGraph and MinIO
+   hosts point at the container endpoints (defaults already match):
+
+   ```bash
+   export $(grep -v '^#' .env | xargs)  # or use direnv/uvicorn --env-file
+   ```
+
+4. **Run the API with auto-reload from the repository root:**
+
+   ```bash
+   cd worker
+   uvicorn server:app --reload --env-file ../.env --host 0.0.0.0 --port 8000
+   ```
+
+   The service will rebuild the LangChain context on startup using the TigerGraph
+   REST interface and MinIO credentials provided in `.env`.
+
+5. **Use the CLI locally** against the same backing services:
+
+   ```bash
+   python cli.py ingest --dir sample_docs
+   python cli.py query "List the supported embedding scopes"
+   ```
+
+When you are finished, stop the infrastructure containers with
+`docker compose down` (or `make dev-down`).
+
+## User onboarding guide
+
+Once the API is running—either via Docker Compose or a local Python process—you
+can follow the workflow below to onboard new users and begin interacting with
+the RAG system.
+
+1. **Register an account:**
+
+   ```bash
+   curl -X POST "http://localhost:${API_PORT:-8000}/auth/register" \
      -H "Content-Type: application/json" \
-     -d '{"email": "user@example.com", "password": "ChangeMe123", "full_name": "Example User"}'
-
-   curl -X POST "http://localhost:${API_PORT}/auth/token" \
-     -H "Content-Type: application/x-www-form-urlencoded" \
-     -d 'username=user@example.com&password=ChangeMe123'
+     -d '{"email":"user@example.com","password":"ChangeMe123","full_name":"Example User"}'
    ```
 
-   Use the returned bearer token for subsequent requests and store preferences:
+2. **Authenticate and capture the bearer token:**
 
    ```bash
-   curl -X POST "http://localhost:${API_PORT}/auth/onboarding" \
+   TOKEN=$(curl -s -X POST "http://localhost:${API_PORT:-8000}/auth/token" \
+     -H "Content-Type: application/x-www-form-urlencoded" \
+     -d 'username=user@example.com&password=ChangeMe123' | jq -r .access_token)
+   ```
+
+3. **Store onboarding preferences** (categories, default agent selection, and
+   optional metadata) so the orchestrator can tailor retrieval and LLM routing:
+
+   ```bash
+   curl -X POST "http://localhost:${API_PORT:-8000}/auth/onboarding" \
      -H "Authorization: Bearer ${TOKEN}" \
      -H "Content-Type: application/json" \
-     -d '{"categories": ["product", "architecture"], "preferred_agent": "default"}'
+     -d '{"categories":["product","architecture"],"preferred_agent":"default"}'
    ```
 
-5. Upload documents and issue queries:
+4. **Upload documents for ingestion.** Files are written to MinIO, chunked,
+   embedded, and persisted in TigerGraph with both dense and bitwise vectors:
 
    ```bash
-   curl -X POST "http://localhost:${API_PORT}/ingest" \
+   curl -X POST "http://localhost:${API_PORT:-8000}/ingest" \
      -H "Authorization: Bearer ${TOKEN}" \
      -F "files=@worker/sample_docs/tigergraph_overview.pdf" \
-     -F "categories=product" -F "model_alias=default"
-
-   curl -X POST "http://localhost:${API_PORT}/query" \
-     -H "Authorization: Bearer ${TOKEN}" \
-     -H "Content-Type: application/json" \
-     -d '{"question": "Summarise the onboarding steps", "mode": "parallel", "agents": ["default"]}'
+     -F "categories=product" \
+     -F "model_alias=default" \
+     -F "embedding_scope=both" \
+     -F "sharing_preference=both"
    ```
 
-6. Tail logs or shut down when finished:
+5. **Ask questions against the knowledge base** using sequential or parallel
+   agent execution modes:
 
    ```bash
-   make logs
-   make down
+   curl -X POST "http://localhost:${API_PORT:-8000}/query" \
+     -H "Authorization: Bearer ${TOKEN}" \
+     -H "Content-Type: application/json" \
+     -d '{"question":"Summarise the onboarding steps","mode":"parallel","agents":["default"]}'
    ```
 
-> **Note:** TigerGraph Enterprise requires a valid license. Place the file at the
-> path referenced by `TG_LICENSE_FILE` before starting the stack.
+6. **Review uploads and monitor activity** via supporting endpoints:
+
+   ```bash
+   curl -H "Authorization: Bearer ${TOKEN}" http://localhost:${API_PORT:-8000}/documents
+   curl http://localhost:${API_PORT:-8000}/agents
+   curl http://localhost:${API_PORT:-8000}/healthz
+   ```
+
+For day-to-day operations, the `/auth/onboarding` preferences drive which
+categories and agents are used by default, while ingestion requests can override
+those values per upload. The returned metadata from ingestion includes the
+MinIO object URI, submission identifiers, and embedding visibility so clients
+can build audit trails or user-facing dashboards.
 
 ## CLI Usage
 
