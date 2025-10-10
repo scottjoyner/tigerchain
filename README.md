@@ -170,6 +170,18 @@ the RAG system.
      -F "sharing_preference=both"
    ```
 
+   You can also ingest arXiv papers directly by supplying an identifier or URL.
+   The service downloads the PDF, captures metadata (title, authors, abstract,
+   categories), chunks and embeds the content, and stores the result in
+   TigerGraph:
+
+   ```bash
+   curl -X POST "http://localhost:${API_PORT:-8000}/ingest/arxiv" \
+     -H "Authorization: Bearer ${TOKEN}" \
+     -H "Content-Type: application/json" \
+     -d '{"identifier":"2301.12345v1","categories":["research"],"model_alias":"default"}'
+   ```
+
 5. **Ask questions against the knowledge base** using sequential or parallel
    agent execution modes:
 
@@ -198,6 +210,20 @@ can build audit trails or user-facing dashboards.
 
 The `rag-api` container image bundles a Typer CLI for local operations. Use
 `docker compose run --rm rag-api python cli.py --help` for full details.
+
+### Ingesting arXiv papers from the CLI
+
+Download and ingest an arXiv paper in a single step:
+
+```bash
+python cli.py ingest-arxiv 2301.12345v1 --category research --agent default
+```
+
+The command accepts either a bare identifier (with or without a version), a
+full `https://arxiv.org/abs/...` URL, or a direct PDF link. The CLI mirrors the
+API behaviour by enriching chunk metadata with the arXiv title, authors,
+abstract, categories, and canonical URLs before persisting embeddings and
+source artefacts.
 
 - `make ingest` – embed and upsert all files under `worker/sample_docs` (supports `--owner`, `--agent`, and `--category`).
 - `make query Q="..."` – run an ad-hoc question against TigerGraph-stored data with optional `--agent`, `--mode`, and `--category` filters.

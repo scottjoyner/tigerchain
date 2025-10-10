@@ -20,6 +20,7 @@ from tigerchain_app.auth.schemas import DocumentRecord
 from tigerchain_app.auth.security import get_current_active_user
 from tigerchain_app.auth.service import DocumentService
 from tigerchain_app.context import build_context
+from tigerchain_app.ingestion.pipeline import IngestionResult
 from tigerchain_app.utils.logging import configure_logging, get_logger
 from tigerchain_app.utils.subjects import SubjectClassifier
 
@@ -77,6 +78,78 @@ class IngestResponse(BaseModel):
     ingested_chunks: int
     documents: List[IngestedDocumentResponse]
     agent: str
+
+
+class ArxivIngestRequest(BaseModel):
+    identifier: str
+    category: Optional[str] = None
+    categories: Optional[List[str]] = None
+    model_alias: Optional[str] = None
+    metadata: Optional[dict] = None
+    embedding_scope: Literal["public", "private", "both"] = "both"
+    sharing_preference: Literal["public", "private", "both"] = "both"
+    submission_id: Optional[str] = None
+
+
+def _select_agent_alias(context, current_user: User, model_alias: Optional[str]) -> str:
+    orchestrator = context.agent_orchestrator
+    available_agents = set(orchestrator.available_agents())
+    preferred_agent = model_alias or current_user.preferred_agent or context.settings.default_agent
+    if preferred_agent not in available_agents:
+        raise HTTPException(status_code=400, detail=f"Unknown agent '{preferred_agent}'")
+    return preferred_agent
+
+
+def _merge_categories(current_user: User, category: Optional[str], categories: Optional[List[str]]) -> set[str]:
+    category_values = set(current_user.categories or [])
+    if category:
+        category_values.add(category)
+    if categories:
+        category_values.update({value for value in categories if value})
+    return {value for value in category_values if value}
+
+
+def _persist_ingestion_records(
+    ingestion_result: IngestionResult,
+    *,
+    document_service: DocumentService,
+    current_user: User,
+    sharing_preference: str,
+) -> List[IngestedDocumentResponse]:
+    response_docs: List[IngestedDocumentResponse] = []
+    for summary in ingestion_result.documents:
+        record = document_service.record_upload(
+            user_id=current_user.id,
+            doc_id=summary.doc_id,
+            filename=summary.source_path.name,
+            categories=summary.categories,
+            model_alias=summary.model_alias,
+            object_uri=summary.uri,
+            http_url=summary.http_url,
+            metadata=summary.metadata,
+            submission_id=summary.submission_id,
+            embedding_scope=summary.embedding_scope,
+            sharing_preference=sharing_preference,
+            private_embedding_uri=summary.private_embedding_uri,
+        )
+        response_docs.append(
+            IngestedDocumentResponse(
+                doc_id=record.doc_id,
+                filename=record.filename,
+                categories=record.categories,
+                model_alias=record.model_alias,
+                object_uri=record.object_uri,
+                http_url=record.http_url,
+                metadata=record.metadata,
+                submission_id=record.submission_id or summary.submission_id,
+                private_embedding_uri=record.private_embedding_uri or summary.private_embedding_uri,
+                embedding_scope=record.embedding_scope or summary.embedding_scope,
+                sharing_preference=record.sharing_preference or sharing_preference,
+                file_size_bytes=summary.file_size_bytes,
+                source_checksum=summary.source_checksum,
+            )
+        )
+    return response_docs
 
 
 class AgentResult(BaseModel):
@@ -143,17 +216,8 @@ async def ingest_documents(
         paths.append(temp_path)
         logger.info("Uploaded %s (%s bytes)", upload.filename, temp_path.stat().st_size)
 
-    orchestrator = context.agent_orchestrator
-    available_agents = set(orchestrator.available_agents())
-    preferred_agent = model_alias or current_user.preferred_agent or context.settings.default_agent
-    if preferred_agent not in available_agents:
-        raise HTTPException(status_code=400, detail=f"Unknown agent '{preferred_agent}'")
-
-    category_values = set(current_user.categories or [])
-    if category:
-        category_values.add(category)
-    if categories:
-        category_values.update({value for value in categories if value})
+    preferred_agent = _select_agent_alias(context, current_user, model_alias)
+    category_values = _merge_categories(current_user, category, categories)
 
     ingestion_result = pipeline.ingest_files(
         paths,
@@ -166,39 +230,12 @@ async def ingest_documents(
     )
 
     document_service = DocumentService(session)
-    response_docs: List[IngestedDocumentResponse] = []
-    for summary in ingestion_result.documents:
-        record = document_service.record_upload(
-            user_id=current_user.id,
-            doc_id=summary.doc_id,
-            filename=summary.source_path.name,
-            categories=summary.categories,
-            model_alias=summary.model_alias,
-            object_uri=summary.uri,
-            http_url=summary.http_url,
-            metadata=summary.metadata,
-            submission_id=summary.submission_id,
-            embedding_scope=summary.embedding_scope,
-            sharing_preference=sharing_preference,
-            private_embedding_uri=summary.private_embedding_uri,
-        )
-        response_docs.append(
-            IngestedDocumentResponse(
-                doc_id=record.doc_id,
-                filename=record.filename,
-                categories=record.categories,
-                model_alias=record.model_alias,
-                object_uri=record.object_uri,
-                http_url=record.http_url,
-                metadata=record.metadata,
-                submission_id=record.submission_id or summary.submission_id,
-                private_embedding_uri=record.private_embedding_uri or summary.private_embedding_uri,
-                embedding_scope=record.embedding_scope or summary.embedding_scope,
-                sharing_preference=record.sharing_preference or sharing_preference,
-                file_size_bytes=summary.file_size_bytes,
-                source_checksum=summary.source_checksum,
-            )
-        )
+    response_docs = _persist_ingestion_records(
+        ingestion_result,
+        document_service=document_service,
+        current_user=current_user,
+        sharing_preference=sharing_preference,
+    )
 
     for path in paths:
         try:
@@ -206,6 +243,42 @@ async def ingest_documents(
         except Exception:
             logger.warning("Failed to remove temporary file %s", path)
     return IngestResponse(ingested_chunks=len(ingestion_result.chunks), documents=response_docs, agent=preferred_agent)
+
+
+@app.post("/ingest/arxiv", response_model=IngestResponse)
+async def ingest_arxiv_document(
+    request: ArxivIngestRequest,
+    context=Depends(get_context),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    pipeline = context.pipeline
+    preferred_agent = _select_agent_alias(context, current_user, request.model_alias)
+    category_values = _merge_categories(current_user, request.category, request.categories)
+    extra_metadata = dict(request.metadata) if request.metadata else None
+
+    ingestion_result = pipeline.ingest_arxiv(
+        request.identifier,
+        owner_id=str(current_user.id),
+        categories=category_values,
+        model_alias=preferred_agent,
+        extra_metadata=extra_metadata,
+        embedding_scope=request.embedding_scope,
+        submission_id=request.submission_id,
+    )
+
+    document_service = DocumentService(session)
+    response_docs = _persist_ingestion_records(
+        ingestion_result,
+        document_service=document_service,
+        current_user=current_user,
+        sharing_preference=request.sharing_preference,
+    )
+    return IngestResponse(
+        ingested_chunks=len(ingestion_result.chunks),
+        documents=response_docs,
+        agent=preferred_agent,
+    )
 
 
 @app.post("/query", response_model=QueryResponse)
