@@ -16,6 +16,7 @@ from ..utils.importance import DocumentImportanceScorer
 from ..utils.logging import get_logger
 from ..utils.subjects import SubjectClassifier
 from ..utils.text import resolve_document_id
+from .arxiv import fetch_arxiv_paper
 from .chunking import AdaptiveChunker
 from .loaders import SUPPORTED_EXTENSIONS, load_documents
 
@@ -307,6 +308,53 @@ class DocumentIngestionPipeline:
         self._persist_private_embeddings(private_embedding_cache, doc_id_map, submission_id, summaries, scope)
         logger.info("Persisted %s chunks to TigerGraph", len(rows))
         return IngestionResult(chunks=rows, documents=list(summaries.values()))
+
+    def ingest_arxiv(
+        self,
+        identifier: str,
+        *,
+        owner_id: str | None = None,
+        categories: Iterable[str] | None = None,
+        model_alias: str | None = None,
+        extra_metadata: dict | None = None,
+        embedding_scope: str | EmbeddingScope = "both",
+        submission_id: str | None = None,
+    ) -> IngestionResult:
+        scope = self._normalise_embedding_scope(embedding_scope)
+        paper = fetch_arxiv_paper(identifier)
+        logger.info("Ingesting arXiv paper %s", paper.arxiv_id)
+        category_values = {c.strip() for c in categories or [] if c and c.strip()}
+        category_values.update(paper.categories)
+        if paper.primary_category:
+            category_values.add(paper.primary_category)
+
+        metadata_block = paper.to_ingestion_metadata()
+        combined_metadata: dict[str, object]
+        if extra_metadata:
+            combined_metadata = dict(extra_metadata)
+            if isinstance(combined_metadata.get("arxiv"), dict):
+                merged = dict(metadata_block)
+                merged.update(combined_metadata["arxiv"])  # type: ignore[arg-type]
+                combined_metadata["arxiv"] = merged
+            else:
+                combined_metadata["arxiv"] = metadata_block
+        else:
+            combined_metadata = {"arxiv": metadata_block}
+        combined_metadata.setdefault("source", "arxiv")
+
+        try:
+            result = self.ingest_files(
+                [paper.pdf_path],
+                owner_id=owner_id,
+                categories=category_values,
+                model_alias=model_alias,
+                extra_metadata=combined_metadata,
+                embedding_scope=scope,
+                submission_id=submission_id or paper.arxiv_id.replace("/", "_"),
+            )
+        finally:
+            paper.cleanup()
+        return result
 
     # ------------------------------------------------------------------
     # Helpers

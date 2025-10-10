@@ -167,3 +167,51 @@ def test_invalid_scope_raises(tmp_path: Path, pipeline: DocumentIngestionPipelin
 
     with pytest.raises(ValueError):
         pipeline.ingest_files([source], embedding_scope="invalid-scope")
+
+
+def test_ingest_arxiv_uses_metadata(tmp_path: Path, pipeline: DocumentIngestionPipeline, monkeypatch: pytest.MonkeyPatch) -> None:
+    pdf_dir = tmp_path / "paper"
+    pdf_dir.mkdir()
+    pdf_path = pdf_dir / "2301.12345v1.pdf"
+    pdf_path.write_text("arxiv content")
+
+    from tigerchain_app.ingestion.arxiv import ArxivPaper
+
+    paper = ArxivPaper(
+        arxiv_id="2301.12345v1",
+        title="Sample Paper",
+        summary="Summary",
+        authors=["Alice"],
+        pdf_path=pdf_path,
+        pdf_url="https://arxiv.org/pdf/2301.12345v1.pdf",
+        abs_url="https://arxiv.org/abs/2301.12345v1",
+        published=None,
+        updated=None,
+        categories=["cs.AI"],
+        primary_category="cs.AI",
+        doi=None,
+        workdir=pdf_dir,
+    )
+
+    def _fake_fetch(identifier: str):
+        assert identifier == "2301.12345v1"
+        return paper
+
+    monkeypatch.setattr("tigerchain_app.ingestion.pipeline.fetch_arxiv_paper", _fake_fetch)
+
+    result = pipeline.ingest_arxiv(
+        "2301.12345v1",
+        owner_id="user-123",
+        categories=["custom"],
+        extra_metadata={"note": "value"},
+        embedding_scope=EmbeddingScope.BOTH,
+    )
+
+    assert result.documents, "expected arXiv ingestion to yield document summaries"
+    summary = result.documents[0]
+    assert "arxiv" in summary.metadata
+    assert summary.metadata["arxiv"]["id"] == "2301.12345v1"
+    assert summary.metadata["note"] == "value"
+    assert {c.lower() for c in summary.categories} >= {"custom", "cs.ai"}
+    assert result.chunks[0].metadata["ingestion_metadata"]["arxiv"]["id"] == "2301.12345v1"
+    assert not paper.pdf_path.exists(), "temporary arXiv PDF should be cleaned up"

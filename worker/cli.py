@@ -10,6 +10,7 @@ import typer
 
 from tigerchain_app.agents import QueryContext
 from tigerchain_app.context import build_context
+from tigerchain_app.ingestion.pipeline import IngestionResult
 from tigerchain_app.utils.logging import configure_logging, get_logger
 
 app = typer.Typer(help="TigerChain CLI utilities")
@@ -35,6 +36,25 @@ def _format_bytes(size: int) -> str:
     return f"{value:.1f} PB"
 
 
+def _print_ingestion_summary(result: IngestionResult) -> None:
+    typer.echo(f"Ingested {len(result.chunks)} chunks from {len(result.documents)} document(s)")
+    if not result.documents:
+        return
+    typer.echo("\nIngestion summary:")
+    chunk_counts = Counter(row.doc_id for row in result.chunks)
+    for summary in result.documents:
+        chunk_total = chunk_counts.get(summary.doc_id, 0)
+        typer.echo(
+            f"- {summary.doc_id} · {summary.source_path.name} · {chunk_total} chunk(s) · "
+            f"{_format_bytes(summary.file_size_bytes)} · scope={summary.embedding_scope}"
+        )
+        if summary.categories:
+            typer.echo(f"  Categories: {', '.join(summary.categories)}")
+        typer.echo(f"  Object URI: {summary.uri}")
+        if summary.private_embedding_uri:
+            typer.echo(f"  Private embeddings: {summary.private_embedding_uri}")
+
+
 @app.command()
 def ingest(
     path: Path = typer.Argument(..., exists=True, help="Path to a document file or directory"),
@@ -54,21 +74,35 @@ def ingest(
     else:
         logger.info("Ingesting file %s", path)
         result = pipeline.ingest_files([path], owner_id=owner, categories=category, model_alias=agent)
-    typer.echo(f"Ingested {len(result.chunks)} chunks from {len(result.documents)} document(s)")
-    if result.documents:
-        typer.echo("\nIngestion summary:")
-        chunk_counts = Counter(row.doc_id for row in result.chunks)
-        for summary in result.documents:
-            chunk_total = chunk_counts.get(summary.doc_id, 0)
-            typer.echo(
-                f"- {summary.doc_id} · {summary.source_path.name} · {chunk_total} chunk(s) · "
-                f"{_format_bytes(summary.file_size_bytes)} · scope={summary.embedding_scope}"
-            )
-            if summary.categories:
-                typer.echo(f"  Categories: {', '.join(summary.categories)}")
-            typer.echo(f"  Object URI: {summary.uri}")
-            if summary.private_embedding_uri:
-                typer.echo(f"  Private embeddings: {summary.private_embedding_uri}")
+    _print_ingestion_summary(result)
+
+
+@app.command("ingest-arxiv")
+def ingest_arxiv(
+    identifier: str = typer.Argument(..., help="arXiv identifier or URL to ingest"),
+    owner: Optional[str] = typer.Option(None, "--owner", help="Optional owner identifier to scope the document"),
+    category: List[str] = typer.Option([], "--category", help="Additional categories to associate with the document"),
+    agent: Optional[str] = typer.Option(None, "--agent", help="Agent/model alias to tag the ingestion with"),
+    embedding_scope: str = typer.Option(
+        "both",
+        "--embedding-scope",
+        help="Embedding visibility scope: public, private, or both",
+    ),
+) -> None:
+    """Download and ingest an arXiv paper by identifier or URL."""
+
+    configure_logging()
+    context = build_context(force=True)
+    pipeline = context.pipeline
+
+    result = pipeline.ingest_arxiv(
+        identifier,
+        owner_id=owner,
+        categories=category,
+        model_alias=agent,
+        embedding_scope=embedding_scope,
+    )
+    _print_ingestion_summary(result)
 
 
 @app.command()
