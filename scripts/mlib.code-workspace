@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "../../mlib"
+		},
+		{
+			"path": "../../portfolio-management"
+		},
+		{
+			"path": "../../auto-assist"
+		},
+		{
+			"path": "../../phonelog"
+		},
+		{
+			"path": "../../lineage"
+		},
+		{
+			"path": "../../auto-ingest"
+		},
+		{
+			"path": "../../hf"
+		},
+		{
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
