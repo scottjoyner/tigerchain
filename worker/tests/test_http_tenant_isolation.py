@@ -180,3 +180,37 @@ def test_real_http_jwt_upload_query_isolation_and_revocation(environment):
     assert client.get("/documents", headers=bob_headers).status_code == 200
 
     assert not any(tempdir.joinpath("staging").iterdir()), "temporary uploads must be removed"
+
+
+def test_self_registration_disabled_by_default_even_without_admin_ids(environment):
+    client, engine, graph, store, tmp_path = environment
+    settings = Settings(
+        jwt_secret_key="synthetic-test-only-signing-key-at-least-32-bytes",
+        enable_public_registration=False,
+        admin_user_ids="",
+    )
+    server.app.dependency_overrides[get_settings] = lambda: settings
+    response = client.post("/auth/register", json={
+        "email": "stranger@synthetic.example", "password": "example-long-password-only-for-tests"
+    })
+    assert response.status_code == 403
+    with Session(engine) as session:
+        from sqlmodel import select
+        assert session.exec(select(User)).all() == []
+
+
+def test_open_registration_rejected_with_numeric_admin_allowlist(environment):
+    client, engine, graph, store, tmp_path = environment
+    settings = Settings(
+        jwt_secret_key="synthetic-test-only-signing-key-at-least-32-bytes",
+        enable_public_registration=True,
+        admin_user_ids="1",
+    )
+    server.app.dependency_overrides[get_settings] = lambda: settings
+    response = client.post("/auth/register", json={
+        "email": "would-be-admin@synthetic.example", "password": "example-long-password-only-for-tests"
+    })
+    assert response.status_code == 403
+    with Session(engine) as session:
+        from sqlmodel import select
+        assert session.exec(select(User)).all() == []
