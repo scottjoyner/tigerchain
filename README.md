@@ -352,3 +352,16 @@ A license-free TigerGraph Community 4.2.5 isolated instance installed the schema
 The updated query performs an exhaustive scan of the owner's compatible public vectors. This is a **research canary**, not a scalable ANN index or a demonstrated production-ready graph service. The exact backend image, license tier, vector dimensions, role scopes, and result format require acceptance against every release target. The former `TopKSimilarDocs` / `TopKSimilarPages` / `TopKSimilarChunks` procedures have been removed because they failed real compilation.
 
 The current AIStor MinIO image starts but denies all S3 operations in offline mode without a valid license; using an alternative S3-compatible storage backend in a canary does not certify MinIO. No existing fleet services were touched.
+
+
+### Stable principal identifiers (migration gate)
+
+The API now signs JWT `sub` claims with a per-account random 128-bit
+`principal_id`, not the recyclable SQLite `users.id`. Graph ownership
+also uses that principal ID. Numeric JWTs are **intentionally invalidated**.
+The `users.principal_id` column requires a reviewed versioned database
+migration before applying this branch to existing users; SQLModel
+`create_all()` does **not** migrate existing tables. Existing TigerGraph rows
+with numeric owners are intentionally inaccessible pending an audited
+old-to-new owner mapping and rollback plan. Never deploy or backfill real user
+data without a separate migration acceptance.
