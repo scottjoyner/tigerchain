@@ -7,7 +7,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from ..config import Settings, get_settings
 from .database import get_session
@@ -65,12 +65,12 @@ def get_current_user(
     except JWTError as exc:  # pragma: no cover - defensive path
         raise credentials_exception from exc
 
-    try:
-        user_id = int(token_data.sub) if token_data.sub is not None else None
-    except (TypeError, ValueError) as exc:
-        raise credentials_exception from exc
-
-    user = session.get(User, user_id) if user_id is not None else None
+    # Numeric JWT subjects are deliberately invalidated: a recreated SQL
+    # database could reuse an integer ID for a different principal.
+    subject = token_data.sub
+    if not subject or len(subject) != 32 or any(char not in "0123456789abcdef" for char in subject):
+        raise credentials_exception
+    user = session.exec(select(User).where(User.principal_id == subject)).first()
     if user is None:
         raise credentials_exception
     return user
