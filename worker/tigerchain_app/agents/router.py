@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..auth.database import get_session
 from ..auth.models import User
-from ..auth.security import get_current_active_user
+from ..auth.security import require_admin_user
 from ..context import build_context
 from ..utils.logging import get_logger
 from .registry import AgentRegistryLoader
@@ -54,7 +54,7 @@ def _refresh_registry(context, session) -> RegistrySnapshotRead:
 
 
 @router.get("/knowledge-bases", response_model=List[KnowledgeBaseRead])
-def list_knowledge_bases(session=Depends(get_session), current_user: User = Depends(get_current_active_user)):
+def list_knowledge_bases(session=Depends(get_session), current_user: User = Depends(require_admin_user)):
     service = AgentBuilderService(session)
     return [KnowledgeBaseRead.model_validate(kb) for kb in service.list_knowledge_bases()]
 
@@ -64,7 +64,7 @@ def create_knowledge_base(
     payload: KnowledgeBaseCreate,
     session=Depends(get_session),
     context=Depends(build_context),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_user),
 ):
     service = AgentBuilderService(session)
     kb = service.create_knowledge_base(payload.model_dump(), created_by=current_user.id)
@@ -78,7 +78,7 @@ def update_knowledge_base(
     payload: KnowledgeBaseUpdate,
     session=Depends(get_session),
     context=Depends(build_context),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_user),
 ):
     service = AgentBuilderService(session)
     kb = service.update_knowledge_base(kb_id, payload.model_dump(exclude_unset=True))
@@ -87,7 +87,7 @@ def update_knowledge_base(
 
 
 @router.get("/agents", response_model=List[AgentProfileRead])
-def list_agents(session=Depends(get_session), current_user: User = Depends(get_current_active_user)):
+def list_agents(session=Depends(get_session), current_user: User = Depends(require_admin_user)):
     service = AgentBuilderService(session)
     return [AgentProfileRead.model_validate(agent) for agent in service.list_agent_profiles()]
 
@@ -97,7 +97,7 @@ def create_agent(
     payload: AgentProfileCreate,
     session=Depends(get_session),
     context=Depends(build_context),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_user),
 ):
     service = AgentBuilderService(session)
     agent = service.create_agent_profile(payload.model_dump(), created_by=current_user.id)
@@ -111,7 +111,7 @@ def update_agent(
     payload: AgentProfileUpdate,
     session=Depends(get_session),
     context=Depends(build_context),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_user),
 ):
     service = AgentBuilderService(session)
     agent = service.update_agent_profile(agent_id, payload.model_dump(exclude_unset=True))
@@ -125,7 +125,7 @@ def assign_tools_to_agent(
     payload: ToolAssignmentRequest,
     session=Depends(get_session),
     context=Depends(build_context),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_user),
 ):
     service = AgentBuilderService(session)
     agent = service.get_agent_profile(agent_id)
@@ -141,7 +141,7 @@ def assign_tools_to_agent(
 
 
 @router.get("/tools", response_model=List[ToolTemplateRead])
-def list_tools(session=Depends(get_session), current_user: User = Depends(get_current_active_user)):
+def list_tools(session=Depends(get_session), current_user: User = Depends(require_admin_user)):
     service = AgentBuilderService(session)
     return [ToolTemplateRead.model_validate(tool) for tool in service.list_tool_templates()]
 
@@ -151,7 +151,7 @@ def create_tool(
     payload: ToolTemplateCreate,
     session=Depends(get_session),
     context=Depends(build_context),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_user),
 ):
     service = AgentBuilderService(session)
     tool = service.create_tool_template(payload.model_dump(), created_by=current_user.id)
@@ -160,7 +160,7 @@ def create_tool(
 
 
 @router.get("/teams", response_model=List[AgentTeamRead])
-def list_teams(session=Depends(get_session), current_user: User = Depends(get_current_active_user)):
+def list_teams(session=Depends(get_session), current_user: User = Depends(require_admin_user)):
     service = AgentBuilderService(session)
     teams = []
     for team in service.list_agent_teams():
@@ -176,7 +176,7 @@ def create_team(
     payload: AgentTeamCreate,
     session=Depends(get_session),
     context=Depends(build_context),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_user),
 ):
     service = AgentBuilderService(session)
     team = service.create_agent_team(payload.model_dump(), created_by=current_user.id)
@@ -193,7 +193,7 @@ def update_team(
     payload: AgentTeamUpdate,
     session=Depends(get_session),
     context=Depends(build_context),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_user),
 ):
     service = AgentBuilderService(session)
     team = service.update_agent_team(team_id, payload.model_dump(exclude_unset=True))
@@ -205,7 +205,7 @@ def update_team(
 
 
 @router.get("/validator", response_model=List[ValidatorProfileRead])
-def list_validator_profiles(session=Depends(get_session), current_user: User = Depends(get_current_active_user)):
+def list_validator_profiles(session=Depends(get_session), current_user: User = Depends(require_admin_user)):
     service = AgentBuilderService(session)
     return [ValidatorProfileRead.model_validate(v) for v in service.list_validators()]
 
@@ -215,7 +215,7 @@ def upsert_validator(
     payload: ValidatorProfileCreate,
     session=Depends(get_session),
     context=Depends(build_context),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin_user),
 ):
     service = AgentBuilderService(session)
     validator = service.upsert_validator(payload.model_dump(), created_by=current_user.id)
@@ -224,7 +224,7 @@ def upsert_validator(
 
 
 @router.get("/snapshot", response_model=RegistrySnapshotRead)
-def get_registry_snapshot(session=Depends(get_session), context=Depends(build_context), current_user: User = Depends(get_current_active_user)):
+def get_registry_snapshot(session=Depends(get_session), context=Depends(build_context), current_user: User = Depends(require_admin_user)):
     snapshot = AgentRegistryLoader(session, context.settings).build_snapshot()
     registry_data = dict(context.settings.model_registry)
     registry_data.update(snapshot.registry)

@@ -27,12 +27,20 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
+def require_signing_key(settings: Settings) -> str:
+    """Refuse missing, known, or short shared signing keys."""
+    secret = settings.jwt_secret_key
+    if not secret or len(secret.encode("utf-8")) < 32 or secret in {"change-this-secret", "changeme", "secret"}:
+        raise RuntimeError("JWT_SECRET_KEY must be a unique secret of at least 32 bytes")
+    return secret
+
+
 def create_access_token(*, subject: str, settings: Settings, expires_delta: Optional[timedelta] = None) -> str:
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
     to_encode = {"sub": subject, "exp": expire}
-    encoded_jwt = jwt.encode(to_encode, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    encoded_jwt = jwt.encode(to_encode, require_signing_key(settings), algorithm=settings.jwt_algorithm)
     return encoded_jwt
 
 
@@ -47,7 +55,7 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(token, require_signing_key(settings), algorithms=[settings.jwt_algorithm])
         subject: str | None = payload.get("sub")
         if subject is None:
             raise credentials_exception
@@ -69,4 +77,14 @@ def get_current_user(
 def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
     if not current_user.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Inactive user")
+    return current_user
+
+
+def require_admin_user(
+    current_user: User = Depends(get_current_active_user),
+    settings: Settings = Depends(get_settings),
+) -> User:
+    allowed = {value.strip() for value in settings.admin_user_ids.split(",") if value.strip()}
+    if str(current_user.id) not in allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Administrator access required")
     return current_user

@@ -62,8 +62,8 @@ services:
 
   rag-api:
     build:
-      context: ./worker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: worker/Dockerfile
     environment:
       - TG_HOST=tigergraph
       - TG_REST_PORT=9000
@@ -82,20 +82,25 @@ services:
       - MINIO_BUCKET=${MINIO_BUCKET}
       # Optional LLM knobs; keep only what you actually use
       - EMBED_DEVICE=${EMBED_DEVICE}
-      - EMBED_BATCH_SIZE=${EMBED_BATCH_SIZE}
-      - CHUNK_SIZE=${CHUNK_SIZE}
-      - TOP_K=${TOP_K}
-      - LLM_PROVIDER=${LLM_PROVIDER}
-      - LLM_MODEL=${LLM_MODEL}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
+      - EMBED_BATCH_SIZE=${EMBED_BATCH_SIZE:-32}
+      - CHUNK_SIZE=${CHUNK_SIZE:-900}
+      - TOP_K=${TOP_K:-5}
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LLM_MODEL=${LLM_MODEL:-llama2}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.1}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_API_BASE=${OPENAI_API_BASE}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
       - VLLM_API_BASE=${VLLM_API_BASE}
       - STORAGE_BASE_PATH=/tmp/tigerchain
       - API_PORT=${API_PORT}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be explicitly configured}
+      - ADMIN_USER_IDS=${ADMIN_USER_IDS:-}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
+      - DATABASE_URL=sqlite:////data/tigerchain.db
     volumes:
-      - ./worker/sample_docs:/app/sample_docs:ro
+      - ./worker/sample_docs:/app/worker/sample_docs:ro
+      - metadata:/data
     ports:
       - "${API_PORT}:8000"
     depends_on:
@@ -132,6 +137,7 @@ services:
     networks: [tgnet]
 
 volumes:
+  metadata:
   tgdata:
   miniodata:
   vllm-cache:

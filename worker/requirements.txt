@@ -27,6 +27,12 @@ sqlmodel==0.0.21
 passlib[bcrypt]==1.7.4
 python-jose==3.3.0
 
+# Application imports missing from the original container image
+pyTigerGraph>=1.5,<2
+langchain-openai>=0.1.20,<0.2
+pydantic-settings>=2.4,<3
+typer>=0.12,<1
+
 # Tooling & tests
 pytest==8.2.2
 pytest-cov==5.0.0

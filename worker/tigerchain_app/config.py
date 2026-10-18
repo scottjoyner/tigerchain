@@ -102,11 +102,14 @@ class Settings(BaseSettings):
         default="sqlite:///./tigerchain.db",
         description="SQL database URL for authentication and metadata",
     )
-    jwt_secret_key: str = Field(
-        default="change-this-secret",
+    jwt_secret_key: Optional[str] = Field(
+        default=None,
         description="Signing key for JSON web tokens",
     )
     jwt_algorithm: str = Field(default="HS256", description="JWT signing algorithm")
+    admin_user_ids: str = Field(default="", description="Comma-separated user IDs authorized to administer shared agents")
+    cors_allowed_origins: str = Field(default="", description="Comma-separated explicit browser origins; same-origin only by default")
+    enable_private_embeddings: bool = Field(default=False, description="Experimental private vector mode remains disabled until storage ACL validation")
     access_token_expire_minutes: int = Field(
         default=60,
         description="Minutes before issued access tokens expire",
