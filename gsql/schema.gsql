@@ -8,11 +8,11 @@ CREATE VERTEX Document (
   title STRING,
   text STRING,
   pages INT,
-  doc_embedding LIST<FLOAT>   # NEW
+  doc_embedding LIST<DOUBLE>   # NEW
   , source STRING
   , content STRING
   , metadata STRING
-  , embedding LIST<FLOAT>
+  , embedding LIST<DOUBLE>
   , private_embedding LIST<INT>
   , submission_id STRING
   , owner_id STRING
@@ -26,7 +26,7 @@ CREATE VERTEX PageLevel (
   PRIMARY_ID plid STRING,     # e.g., "<doc_id>#p<index>"
   doc_id STRING,
   page_index INT,
-  embedding LIST<FLOAT>
+  embedding LIST<DOUBLE>
 ) WITH PRIMARY_ID_AS_ATTRIBUTE="TRUE"
 
 # Chunk-level embeddings (potentially multiple per page)
@@ -37,7 +37,7 @@ CREATE VERTEX PageChunk (
   chunk_index INT,
   tokens INT,
   text STRING,
-  embedding LIST<FLOAT>
+  embedding LIST<DOUBLE>
 ) WITH PRIMARY_ID_AS_ATTRIBUTE="TRUE"
 
 # Similarity between page-level vertices (weighted)
