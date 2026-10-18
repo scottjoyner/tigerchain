@@ -38,7 +38,7 @@ class DocumentUpload(SQLModel, table=True):
     model_alias: Optional[str] = Field(default=None, index=True)
     object_uri: Optional[str] = Field(default=None)
     http_url: Optional[str] = Field(default=None)
-    metadata: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    extra_metadata: dict = Field(default_factory=dict, sa_column=Column("metadata", JSON))
     submission_id: Optional[str] = Field(default=None, index=True)
     embedding_scope: Optional[str] = Field(default=None, index=True)
     sharing_preference: Optional[str] = Field(default=None, index=True)
