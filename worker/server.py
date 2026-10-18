@@ -273,7 +273,7 @@ async def ingest_documents(
         category_values = _merge_categories(current_user, category, categories)
         ingestion_result = pipeline.ingest_files(
             paths,
-            owner_id=str(current_user.id),
+            owner_id=current_user.principal_id,
             categories=category_values,
             model_alias=preferred_agent,
             extra_metadata=extra_metadata,
@@ -307,7 +307,7 @@ async def ingest_arxiv_document(
 
     ingestion_result = pipeline.ingest_arxiv(
         request.identifier,
-        owner_id=str(current_user.id),
+        owner_id=current_user.principal_id,
         categories=category_values,
         model_alias=preferred_agent,
         extra_metadata=extra_metadata,
@@ -351,7 +351,7 @@ async def query_rag(
     subject_priorities = subject_classifier.priorities_from_categories(categories)
     shared_alias = agent_names[0] if len(agent_names) == 1 else None
     query_context = QueryContext(
-        owner_id=str(current_user.id),
+        owner_id=current_user.principal_id,
         categories=categories,
         model_alias=shared_alias,
         embedding_scope=request.embedding_scope,
