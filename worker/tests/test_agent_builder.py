@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-from sqlmodel import Field, Session, SQLModel, create_engine
-
-class _User(SQLModel, table=True):  # pragma: no cover - minimal user table for FK
-    __tablename__ = "users"
-
-    id: int | None = Field(default=None, primary_key=True)
+from sqlmodel import Session, SQLModel, create_engine
+from tigerchain_app.auth.models import User  # noqa: F401 - register actual FK target
 
 from tigerchain_app.agents.registry import AgentRegistryLoader
 from tigerchain_app.agents.service import AgentBuilderService
