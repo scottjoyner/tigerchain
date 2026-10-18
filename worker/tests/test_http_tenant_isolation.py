@@ -320,3 +320,26 @@ def test_ingestion_rejects_provenance_spoofing_and_unbounded_requests(environmen
     assert result.status_code == expected, result.text
     assert not graph.rows
     assert not store.files
+
+
+def test_stale_numeric_graph_owner_does_not_map_to_new_user(environment):
+    client, engine, graph, store, tmp_path = environment
+    if not isinstance(graph, MemoryGraph):
+        pytest.skip("Synthetic-only stale-ID fixture")
+    from datetime import datetime, timezone
+    from tigerchain_app.ingestion.pipeline import ChunkRow
+    graph.rows["legacy-numeric-user-1"] = ChunkRow(
+        id="legacy-numeric-user-1", doc_id="old-data", chunk_id=0,
+        title="stale document", source="stale.txt", uri="s3://synthetic/legacy",
+        http_url="http://synthetic.invalid/legacy",
+        content="CONFIDENTIAL_STALE_NUMERIC_ID_OWNER",
+        metadata={"owner_id": "1", "embedding_scope": "public", "model_alias": "default"},
+        embedding=[1.0, 0.0],
+        created_at=datetime.now(timezone.utc),
+        owner_id="1",
+    )
+    numeric_id, headers = _register_and_login(client, "new-owner")
+    assert numeric_id == 1  # simulates freshly recreated SQL identity database
+    response = client.post("/query", headers=headers, json={"question": "stale document"})
+    assert response.status_code == 200
+    assert response.json()["answer"] == ""
