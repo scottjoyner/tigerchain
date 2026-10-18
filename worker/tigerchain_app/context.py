@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from langchain.chains import RetrievalQA
 from langchain_core.embeddings import Embeddings
@@ -62,7 +61,7 @@ def build_context(force: bool = False) -> ApplicationContext:
 
     embeddings = create_embeddings(settings)
     tigergraph = TigerGraphClient(settings)
-    _bootstrap_gsql(tigergraph)
+    # Graph changes must be applied explicitly by an operator, not on API startup.
     object_store = MinioObjectStore(settings)
     pipeline = DocumentIngestionPipeline(settings, embeddings, tigergraph, object_store)
     retriever = TigerGraphVectorRetriever(settings, embeddings, tigergraph)
@@ -89,15 +88,3 @@ def build_context(force: bool = False) -> ApplicationContext:
     )
     logger.info("Application context initialised")
     return _context
-
-
-def _bootstrap_gsql(tigergraph: TigerGraphClient) -> None:
-    gsql_dir = Path(__file__).resolve().parents[2] / "gsql"
-    for script_name in ["schema.gsql", "queries.gsql"]:
-        script_path = gsql_dir / script_name
-        if not script_path.exists():
-            continue
-        try:
-            tigergraph.run_gsql_file(script_path)
-        except Exception as exc:  # pragma: no cover - defensive logging
-            logger.warning("Failed to apply %s: %s", script_path, exc)
