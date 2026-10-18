@@ -106,6 +106,18 @@ def _require_private_sharing(sharing_preference: str) -> None:
         raise HTTPException(status_code=403, detail="Shared documents are disabled pending ACL review")
 
 
+_RESERVED_INGEST_METADATA = {
+    "owner_id", "user_id", "doc_id", "embedding_scope", "sharing_preference",
+    "submission_id", "source_checksum", "source_file_size",
+}
+
+
+def _validate_user_metadata(metadata: dict) -> None:
+    reserved = sorted(_RESERVED_INGEST_METADATA.intersection(metadata))
+    if reserved:
+        raise HTTPException(status_code=400, detail="Reserved metadata fields may not be supplied")
+
+
 def _select_agent_alias(context, current_user: User, model_alias: Optional[str]) -> str:
     orchestrator = context.agent_orchestrator
     available_agents = set(orchestrator.available_agents())
@@ -232,6 +244,7 @@ async def ingest_documents(
                 raise HTTPException(status_code=400, detail="metadata must be valid JSON") from exc
             if not isinstance(extra_metadata, dict):
                 raise HTTPException(status_code=400, detail="metadata must be a JSON object")
+            _validate_user_metadata(extra_metadata)
 
         seen: set[str] = set()
         request_size = 0
@@ -289,6 +302,8 @@ async def ingest_arxiv_document(
     preferred_agent = _select_agent_alias(context, current_user, request.model_alias)
     category_values = _merge_categories(current_user, request.category, request.categories)
     extra_metadata = dict(request.metadata) if request.metadata else None
+    if extra_metadata is not None:
+        _validate_user_metadata(extra_metadata)
 
     ingestion_result = pipeline.ingest_arxiv(
         request.identifier,
