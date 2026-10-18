@@ -90,13 +90,20 @@ class ArxivIngestRequest(BaseModel):
     model_alias: Optional[str] = None
     metadata: Optional[dict] = None
     embedding_scope: Literal["public", "private", "both"] = "public"
-    sharing_preference: Literal["public", "private", "both"] = "both"
+    sharing_preference: Literal["public", "private", "both"] = "private"
     submission_id: Optional[str] = None
 
 
 def _require_embedding_scope(scope: str) -> None:
     if scope != "public" and not get_settings().enable_private_embeddings:
         raise HTTPException(status_code=403, detail="Private embeddings disabled pending storage authorization review")
+
+
+def _require_private_sharing(sharing_preference: str) -> None:
+    # No shared-document ACL enforcement exists yet. Reject promises of sharing
+    # rather than persisting a misleading policy that could be treated as public.
+    if sharing_preference != "private":
+        raise HTTPException(status_code=403, detail="Shared documents are disabled pending ACL review")
 
 
 def _select_agent_alias(context, current_user: User, model_alias: Optional[str]) -> str:
@@ -196,7 +203,7 @@ async def ingest_documents(
         default="public", description="Embedding visibility preference"
     ),
     sharing_preference: Literal["public", "private", "both"] = Form(
-        default="both", description="Embedding sets that may be shared"
+        default="private", description="Embedding sets that may be shared"
     ),
     submission_id: Optional[str] = Form(
         default=None,
@@ -210,6 +217,11 @@ async def ingest_documents(
     storage_dir = context.settings.storage_base_path
     storage_dir.mkdir(parents=True, exist_ok=True)
     _require_embedding_scope(embedding_scope)
+    _require_private_sharing(sharing_preference)
+    if len(files) > 8:
+        raise HTTPException(status_code=413, detail="At most 8 files may be uploaded per request")
+    if metadata is not None and len(metadata.encode("utf-8")) > 16 * 1024:
+        raise HTTPException(status_code=413, detail="Metadata exceeds 16 KiB limit")
     with TemporaryDirectory(prefix="tigerchain-ingest-", dir=storage_dir) as staged_dir:
         paths: List[Path] = []
         extra_metadata: dict | None = None
@@ -222,6 +234,7 @@ async def ingest_documents(
                 raise HTTPException(status_code=400, detail="metadata must be a JSON object")
 
         seen: set[str] = set()
+        request_size = 0
         for upload in files:
             try:
                 name = validate_upload_filename(upload.filename)
@@ -235,6 +248,9 @@ async def ingest_documents(
             with temp_path.open("xb") as buffer:
                 while block := await upload.read(1024 * 1024):
                     size += len(block)
+                    request_size += len(block)
+                    if request_size > 64 * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail="Total upload exceeds 64 MiB limit")
                     if size > 32 * 1024 * 1024:
                         raise HTTPException(status_code=413, detail="Upload exceeds 32 MiB limit")
                     buffer.write(block)
@@ -268,6 +284,7 @@ async def ingest_arxiv_document(
     current_user: User = Depends(get_current_active_user),
 ):
     _require_embedding_scope(request.embedding_scope)
+    _require_private_sharing(request.sharing_preference)
     pipeline = context.pipeline
     preferred_agent = _select_agent_alias(context, current_user, request.model_alias)
     category_values = _merge_categories(current_user, request.category, request.categories)
