@@ -5,7 +5,8 @@
 ## Security preflight
 
 - Run with explicit `JWT_SECRET_KEY` (32+ random bytes), for example generate one using `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. Never commit an actual signing key.
-- Self-registration is **off by default**. An operator must explicitly set `ENABLE_PUBLIC_REGISTRATION=true` for disposable single-user/synthetic tests, with `ADMIN_USER_IDS` empty; do not enable self-registration in multi-user production environments.\n- Set `ADMIN_USER_IDS` to an explicit comma-separated allowlist of existing authenticated user IDs. The agent builder is denied to everyone when unset. Creating a registered user does not make that user an administrator.
+- Self-registration is **off by default**. An operator must explicitly set `ENABLE_PUBLIC_REGISTRATION=true` for disposable single-user/synthetic tests, with `ADMIN_USER_IDS` empty; do not enable self-registration in multi-user production environments.
+- Set `ADMIN_USER_IDS` to an explicit comma-separated allowlist of existing authenticated user IDs. The agent builder is denied to everyone when unset. Creating a registered user does not make that user an administrator.
 - Optionally set `CORS_ALLOWED_ORIGINS` to comma-separated exact browser origins. Wildcard CORS is disabled.
 - Public embeddings are the only supported mode by default. Do not enable `ENABLE_PRIVATE_EMBEDDINGS` until per-object storage ACLs, encryption, and leakage tests have been audited; bitwise embeddings are not encryption.
 - Docker Compose ports bind to local loopback. Production ingress and Tailnet authentication must be handled by a reviewed gateway instead of widening container port bindings.
