@@ -26,6 +26,7 @@ python-multipart==0.0.9
 sqlmodel==0.0.21
 email-validator>=2,<3
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1  # passlib 1.7.4 is incompatible with bcrypt 5
 python-jose==3.3.0
 
 # Application imports missing from the original container image
