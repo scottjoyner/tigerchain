@@ -51,7 +51,7 @@ class DocumentRecord(BaseModel):
     model_alias: Optional[str]
     object_uri: Optional[str]
     http_url: Optional[str]
-    metadata: Optional[dict]
+    metadata: Optional[dict] = Field(default=None, validation_alias="extra_metadata")
     submission_id: Optional[str]
     embedding_scope: Optional[str]
     sharing_preference: Optional[str]
