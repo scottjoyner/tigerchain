@@ -265,3 +265,36 @@ def test_open_registration_rejected_with_numeric_admin_allowlist(environment):
     with Session(engine) as session:
         from sqlmodel import select
         assert session.exec(select(User)).all() == []
+
+
+@pytest.mark.parametrize("case,expected", [
+    ("spoofed_owner", 400),
+    ("forged_arxiv_provenance", 400),
+    ("shared_without_acls", 403),
+    ("too_many_files", 413),
+    ("oversized_metadata", 413),
+])
+def test_ingestion_rejects_provenance_spoofing_and_unbounded_requests(environment, case, expected):
+    client, engine, graph, store, tmp_path = environment
+    _, headers = _register_and_login(client, f"negative-{case}")
+    payload = b"SYNTHETIC_CANARY_ONLY"
+    if case == "forged_arxiv_provenance":
+        result = client.post("/ingest/arxiv", headers=headers, json={
+            "identifier": "2301.12345", "embedding_scope": "public",
+            "sharing_preference": "private", "metadata": {"owner_id": "another-user"},
+        })
+    else:
+        files = [("files", ("synthetic.txt", payload, "text/plain"))]
+        data = {"embedding_scope": "public"}
+        if case == "spoofed_owner":
+            data["metadata"] = json.dumps({"owner_id": "another-user"})
+        elif case == "shared_without_acls":
+            data["sharing_preference"] = "both"
+        elif case == "too_many_files":
+            files = [("files", (f"doc-{i}.txt", payload, "text/plain")) for i in range(9)]
+        elif case == "oversized_metadata":
+            data["metadata"] = json.dumps({"description": "A" * (17 * 1024)})
+        result = client.post("/ingest", headers=headers, files=files, data=data)
+    assert result.status_code == expected, result.text
+    assert not graph.rows
+    assert not store.files
