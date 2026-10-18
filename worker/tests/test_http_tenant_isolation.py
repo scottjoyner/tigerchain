@@ -189,6 +189,27 @@ def test_real_http_jwt_upload_query_isolation_and_revocation(environment):
     bob_id, bob_headers = _register_and_login(client, "bob")
     assert alice_id != bob_id
 
+    from jose import jwt
+    from tigerchain_app.auth.security import create_access_token
+    test_settings = server.app.dependency_overrides[get_settings]()
+    principals = {}
+    for label, numeric_id, headers in (("alice", alice_id, alice_headers), ("bob", bob_id, bob_headers)):
+        bearer = headers["Authorization"].split(" ", 1)[1]
+        claims = jwt.get_unverified_claims(bearer)
+        principal = claims["sub"]
+        assert len(principal) == 32 and all(char in "0123456789abcdef" for char in principal)
+        assert principal != str(numeric_id)
+        principals[label] = principal
+        # A signed numeric legacy token must not authorize against a reused SQL user ID.
+        numeric_token = create_access_token(subject=str(numeric_id), settings=test_settings)
+        assert client.get("/documents", headers={"Authorization": f"Bearer {numeric_token}"}).status_code == 401
+        # Before this run's uploads, any retained graph data must remain invisible,
+        # including records with recyclable numeric owner IDs from old databases.
+        preexisting = client.post("/query", headers=headers, json={"question": "list documents"})
+        assert preexisting.status_code == 200, preexisting.text
+        assert preexisting.json()["answer"] == ""
+    assert principals["alice"] != principals["bob"]
+
     for label, headers in (("alice", alice_headers), ("bob", bob_headers)):
         filename = f"{label}.txt"
         marker = f"ISOLATED_SYNTHETIC_{label.upper()}_DOCUMENT"
@@ -216,6 +237,7 @@ def test_real_http_jwt_upload_query_isolation_and_revocation(environment):
 
     assert len(store.files) == 2
     assert len(graph.rows) == 2
+    assert {row.owner_id for row in graph.rows.values()} == set(principals.values())
     assert client.get("/documents").status_code == 401
     assert client.post("/query", json={"question": "missing token"}).status_code == 401
     assert client.get("/documents", headers={"Authorization": "Bearer invalid"}).status_code == 401
