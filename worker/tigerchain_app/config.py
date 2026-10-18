@@ -109,6 +109,7 @@ class Settings(BaseSettings):
     )
     jwt_algorithm: str = Field(default="HS256", description="JWT signing algorithm")
     admin_user_ids: str = Field(default="", description="Comma-separated user IDs authorized to administer shared agents")
+    enable_public_registration: bool = Field(default=False, description="Explicit development-only self-registration switch; must not be paired with administrator IDs")
     cors_allowed_origins: str = Field(default="", description="Comma-separated explicit browser origins; same-origin only by default")
     enable_private_embeddings: bool = Field(default=False, description="Experimental private vector mode remains disabled until storage ACL validation")
     access_token_expire_minutes: int = Field(
