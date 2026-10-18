@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 import json
 
@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     openai_api_base: Optional[str] = Field(default=None, description="Override base URL for OpenAI compatible endpoints")
     ollama_base_url: str = Field(default="http://ollama:11434", description="Ollama service URL")
     vllm_api_base: str = Field(default="http://vllm:8000/v1", description="vLLM OpenAI-compatible endpoint")
-    model_registry: dict[str, dict[str, str]] = Field(
+    model_registry: dict[str, dict[str, Any]] = Field(
         default_factory=lambda: {
             "default": {"provider": "ollama", "model": "llama2", "temperature": 0.1},
         },
@@ -117,7 +117,7 @@ class Settings(BaseSettings):
 
     @field_validator("model_registry", mode="before")
     @classmethod
-    def _parse_model_registry(cls, value: object) -> dict[str, dict[str, str]]:
+    def _parse_model_registry(cls, value: object) -> dict[str, dict[str, Any]]:
         if isinstance(value, str):
             try:
                 parsed = json.loads(value)
