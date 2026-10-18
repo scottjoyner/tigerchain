@@ -3,7 +3,7 @@ services:
     image: tigergraph/community:4.2.5
     user: "0" # <— run boot script as root
     # Start TG services and wait for REST++ so healthcheck passes
-    command: ["/bin/bash", "-lc", "/opt/scripts/tg_boot.sh"]
+    entrypoint: ["/bin/bash", "/opt/scripts/tg_boot.sh"]
     environment:
       - USER=${TG_USER}
       - PASSWORD=${TG_PASSWORD}
@@ -12,7 +12,9 @@ services:
       - "127.0.0.1:${TG_REST_PORT}:9000"     # RESTPP
       - "127.0.0.1:${TG_GSQL_PORT}:14240"    # GSQL/Studio
     volumes:
-      - tgdata:/home/tigergraph/data
+      # The real Community Edition System.DataRoot lives under tigergraph/tigergraph/data.
+      # A volume at /home/tigergraph/data does not preserve graph data.
+      - tgdata:/home/tigergraph/tigergraph/data
       - ./gsql:/opt/gsql
       - ./scripts:/opt/scripts
     healthcheck:
