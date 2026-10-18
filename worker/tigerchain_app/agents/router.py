@@ -33,7 +33,7 @@ from .service import AgentBuilderService
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/builder", tags=["agent-builder"])
+router = APIRouter(prefix="/builder", tags=["agent-builder"], dependencies=[Depends(require_admin_user)])
 
 
 def _refresh_registry(context, session) -> RegistrySnapshotRead:
