@@ -134,10 +134,6 @@ class Settings(BaseSettings):
     api_reload: bool = Field(default=False, description="Enable autoreload (development only)")
     storage_base_path: Path = Field(default=Path("/tmp/tigerchain"), description="Temporary path for uploaded files")
 
-    if HAS_PYDANTIC_SETTINGS:
-        class Config:
-            env_prefix = ""
-
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
