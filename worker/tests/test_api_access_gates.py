@@ -22,6 +22,7 @@ def test_unauthenticated_api_paths_are_rejected_before_context_initialization():
             client.post("/query", json={"question": "synthetic"}),
             client.post("/ingest/arxiv", json={"identifier": "2301.12345"}),
             client.get("/builder/snapshot"),
+            client.get("/agent-builder"),
         ]
         assert all(response.status_code == 401 for response in responses)
     finally:
