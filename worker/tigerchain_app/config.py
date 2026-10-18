@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     tg_password: str = Field(default="tigergraph", description="TigerGraph admin password")
     tg_graph: str = Field(default="DocGraph", description="Target TigerGraph graph name")
     tg_token_ttl: int = Field(default=2_592_000, description="REST token lifetime (seconds)")
+    tg_api_token: Optional[str] = Field(default=None, description="Pre-provisioned TigerGraph API token for authenticated REST++ deployments")
 
     # Object storage
     minio_endpoint: str = Field(default="http://minio:9000", description="MinIO endpoint URL")
