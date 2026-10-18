@@ -1,4 +1,4 @@
-name: TigerChain security smoke
+name: TigerChain isolated unit checks
 on:
   pull_request:
   push:
@@ -16,7 +16,9 @@ jobs:
           python-version: '3.11'
       - name: Install lightweight test dependencies
         run: python -m pip install pytest 'pydantic-settings>=2.4,<3' sqlmodel==0.0.21 python-jose==3.3.0 'passlib[bcrypt]==1.7.4' bcrypt==4.0.1 fastapi==0.112.2 'email-validator>=2,<3' python-multipart==0.0.9
+      - name: Install mocked RAG test dependencies
+        run: python -m pip install 'langchain==0.2.16' 'langchain-community==0.2.16' 'langchain-text-splitters==0.2.2' 'pyTigerGraph>=1.5,<2'
       - name: Compile all Python source
         run: python -m compileall -q worker
-      - name: Run dependency-free upload boundary tests
-        run: cd worker && python -m pytest -q tests/test_upload_validation.py tests/test_p0_security.py
+      - name: Run isolated unit and security regression tests
+        run: cd worker && python -m pytest -q tests/
