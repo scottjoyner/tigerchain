@@ -7,8 +7,8 @@ COPY worker/requirements.txt ./requirements.txt
 # The API is a CPU-only retrieval service; inference GPUs are managed by Fleet.
 # Install the CPU wheel first so sentence-transformers cannot pull CUDA runtimes.
 ARG TORCH_CPU_VERSION=2.5.1+cpu
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==${TORCH_CPU_VERSION}" \\
-    && pip install --no-cache-dir -r requirements.txt \\
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu "torch==${TORCH_CPU_VERSION}" \
+    && pip install --no-cache-dir -r requirements.txt \
     && python -c "import torch; assert torch.version.cuda is None, 'CUDA torch is not permitted in the CPU API image'"
 COPY worker/ ./
 COPY gsql/ /app/gsql/
