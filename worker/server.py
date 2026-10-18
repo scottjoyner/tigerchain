@@ -185,7 +185,7 @@ def get_context():
     return build_context()
 
 
-@app.post("/ingest", response_model=IngestResponse)
+@app.post("/ingest", response_model=IngestResponse, dependencies=[Depends(get_current_active_user)])
 async def ingest_documents(
     files: List[UploadFile] = File(..., description="Documents to ingest"),
     category: Optional[str] = Form(default=None, description="Primary category for the upload"),
@@ -260,7 +260,7 @@ async def ingest_documents(
         )
         return IngestResponse(ingested_chunks=len(ingestion_result.chunks), documents=response_docs, agent=preferred_agent)
 
-@app.post("/ingest/arxiv", response_model=IngestResponse)
+@app.post("/ingest/arxiv", response_model=IngestResponse, dependencies=[Depends(get_current_active_user)])
 async def ingest_arxiv_document(
     request: ArxivIngestRequest,
     context=Depends(get_context),
@@ -297,7 +297,7 @@ async def ingest_arxiv_document(
     )
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query", response_model=QueryResponse, dependencies=[Depends(get_current_active_user)])
 async def query_rag(
     request: QueryRequest = Body(..., description="Query payload"),
     context=Depends(get_context),
@@ -344,7 +344,7 @@ async def query_rag(
     return QueryResponse(question=request.question, mode=request.mode, answer=answer, results=formatted_results)
 
 
-@app.get("/agents")
+@app.get("/agents", dependencies=[Depends(get_current_active_user)])
 async def list_agents(context=Depends(get_context)):
     settings = context.settings
     agents = []
