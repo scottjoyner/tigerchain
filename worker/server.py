@@ -17,7 +17,7 @@ from tigerchain_app.auth.models import DocumentUpload, User
 from tigerchain_app.auth.router import router as auth_router
 from tigerchain_app.agents.router import router as builder_router
 from tigerchain_app.auth.schemas import DocumentRecord
-from tigerchain_app.auth.security import get_current_active_user
+from tigerchain_app.auth.security import get_current_active_user, require_admin_user
 from tigerchain_app.auth.service import DocumentService
 from tigerchain_app.context import build_context
 from tigerchain_app.config import get_settings
@@ -44,7 +44,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(builder_router)
 
 
-@app.get("/agent-builder", response_class=HTMLResponse)
+@app.get("/agent-builder", response_class=HTMLResponse, dependencies=[Depends(require_admin_user)])
 async def agent_builder_ui() -> HTMLResponse:
     template_path = Path(__file__).resolve().parent / "tigerchain_app" / "agents" / "templates" / "agent_builder.html"
     if not template_path.exists():
