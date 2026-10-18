@@ -15,6 +15,7 @@ CREATE VERTEX Document (
   , embedding LIST<FLOAT>
   , private_embedding LIST<INT>
   , submission_id STRING
+  , owner_id STRING
   , created_at STRING
   , doc_id STRING
   , chunk_id INT

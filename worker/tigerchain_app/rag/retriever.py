@@ -47,10 +47,13 @@ class TigerGraphVectorRetriever(BaseRetriever):
 
     def _get_relevant_documents(self, query: str) -> List[Document]:  # type: ignore[override]
         logger.debug("Embedding query for retrieval")
+        context = self._context.get()
+        if context is None or not context.owner_id:
+            raise ValueError("Retrieval requires an authenticated owner ID")
         embedding_mode = self._resolve_embedding_mode()
         embedding = self._embed_query(query, embedding_mode)
         fetch_count = self._candidate_pool_size()
-        response = self.tigergraph_client.top_k_similar(embedding, fetch_count, embedding_mode)
+        response = self.tigergraph_client.top_k_similar(embedding, fetch_count, embedding_mode, owner_id=str(context.owner_id))
         candidates = self._parse_response(response)
         reranked = self._rerank_documents(embedding, candidates, embedding_mode)
         top_k = max(self.settings.top_k, 0)
@@ -75,8 +78,8 @@ class TigerGraphVectorRetriever(BaseRetriever):
     def _parse_response(self, payload: dict) -> List[Document]:
         results = []
         for result in payload.get("results", []):
-            for entries in result.get("Start", []):
-                attributes = entries.get("attributes", {})
+            for entries in result.get("Ranked", []):
+                attributes = entries.get("attributes", entries)
                 score = entries.get("score")
                 if score is None:
                     score = attributes.get("score")

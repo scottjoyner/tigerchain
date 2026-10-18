@@ -40,6 +40,7 @@ class ChunkRow:
     created_at: datetime
     private_embedding: List[int] = field(default_factory=list)
     submission_id: str | None = None
+    owner_id: str | None = None
 
     def to_upsert_payload(self) -> dict:
         return {
@@ -55,6 +56,7 @@ class ChunkRow:
                 "embedding": self.embedding,
                 "private_embedding": self.private_embedding,
                 "submission_id": self.submission_id,
+                "owner_id": self.owner_id or "",
                 "created_at": self.created_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
             }
         }
@@ -117,7 +119,7 @@ class DocumentIngestionPipeline:
         categories: Iterable[str] | None = None,
         model_alias: str | None = None,
         extra_metadata: dict | None = None,
-        embedding_scope: str = "both",
+        embedding_scope: str = "public",
         submission_id: str | None = None,
     ) -> IngestionResult:
         scope = self._normalise_embedding_scope(embedding_scope)
@@ -143,10 +145,14 @@ class DocumentIngestionPipeline:
         categories: Iterable[str] | None = None,
         model_alias: str | None = None,
         extra_metadata: dict | None = None,
-        embedding_scope: str | EmbeddingScope = "both",
+        embedding_scope: str | EmbeddingScope = "public",
         submission_id: str | None = None,
     ) -> IngestionResult:
         scope = self._normalise_embedding_scope(embedding_scope)
+        if not owner_id:
+            raise ValueError("Ingestion requires an authenticated owner ID")
+        if scope is not EmbeddingScope.PUBLIC and not self.settings.enable_private_embeddings:
+            raise ValueError("Private embeddings disabled until storage authorization is validated")
         documents = load_documents(file_paths)
         if not documents:
             logger.warning("No documents parsed from inputs")
@@ -264,6 +270,7 @@ class DocumentIngestionPipeline:
                     embedding=list(map(float, embedding)),
                     private_embedding=list(map(int, private_embedding)) if scope is not EmbeddingScope.PUBLIC else [],
                     submission_id=submission_id,
+                    owner_id=str(owner_id),
                     created_at=datetime.now(timezone.utc),
                 )
             )
@@ -317,7 +324,7 @@ class DocumentIngestionPipeline:
         categories: Iterable[str] | None = None,
         model_alias: str | None = None,
         extra_metadata: dict | None = None,
-        embedding_scope: str | EmbeddingScope = "both",
+        embedding_scope: str | EmbeddingScope = "public",
         submission_id: str | None = None,
     ) -> IngestionResult:
         scope = self._normalise_embedding_scope(embedding_scope)
