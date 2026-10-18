@@ -1,4 +1,4 @@
-USE GRAPH $TG_GRAPH
+# Global schema is defined before CREATE GRAPH. Apply only on disposable or new databases.
 
 # Document-level with aggregated doc embedding
 CREATE VERTEX Document (
@@ -46,3 +46,6 @@ CREATE DIRECTED EDGE PageSim (FROM PageLevel, TO PageLevel, weight FLOAT)
 # Edges to connect hierarchy
 CREATE DIRECTED EDGE PAGELEVEL_OF (FROM PageLevel, TO Document)
 CREATE DIRECTED EDGE CHUNK_OF (FROM PageChunk, TO PageLevel)
+
+# Create the graph from all declared vertex and edge types (once, on a new database)
+CREATE GRAPH $TG_GRAPH (*)
