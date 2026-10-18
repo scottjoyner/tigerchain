@@ -85,6 +85,7 @@ def environment(tmp_path):
     settings = Settings(
         jwt_secret_key="synthetic-test-only-signing-key-at-least-32-bytes",
         admin_user_ids="",
+        enable_public_registration=True,
         database_url="sqlite://",
         storage_base_path=tmp_path / "staging",
         retrieval_overfetch_factor=1.0,
