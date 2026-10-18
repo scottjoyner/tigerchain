@@ -148,7 +148,7 @@ def _persist_ingestion_records(
                 model_alias=record.model_alias,
                 object_uri=record.object_uri,
                 http_url=record.http_url,
-                metadata=record.metadata,
+                metadata=record.extra_metadata,
                 submission_id=record.submission_id or summary.submission_id,
                 private_embedding_uri=record.private_embedding_uri or summary.private_embedding_uri,
                 embedding_scope=record.embedding_scope or summary.embedding_scope,
