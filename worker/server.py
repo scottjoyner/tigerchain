@@ -303,6 +303,7 @@ async def query_rag(
     context=Depends(get_context),
     current_user: User = Depends(get_current_active_user),
 ):
+    _require_embedding_scope(request.embedding_scope or "public")
     orchestrator = context.agent_orchestrator
     agent_names = request.agents or ([request.agent] if request.agent else None)
     if agent_names:
