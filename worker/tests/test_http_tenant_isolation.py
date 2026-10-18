@@ -5,6 +5,9 @@ routes and real ingestion/retrieval pipeline run; graph and object I/O are
 in-memory fakes so this test *does not* certify the real backends.
 """
 import json
+import os
+import ipaddress
+from urllib.parse import urlparse
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -103,8 +106,55 @@ def environment(tmp_path):
             yield session
 
     embeddings = SyntheticEmbeddings()
-    graph = MemoryGraph()
-    store = MemoryObjectStore()
+    if os.environ.get("TIGERCHAIN_CANARY_ACK") == "SYNTHETIC_ONLY":
+        # Opt-in real backends ONLY against private, disposable synthetic canaries.
+        # This fixture does not start/stop containers; use a unique Compose project.
+        from tigerchain_app.ingestion.tigergraph import TigerGraphClient
+        from tigerchain_app.ingestion.storage import MinioObjectStore
+
+        def private_url(variable):
+            url = os.environ[variable]
+            parsed = urlparse(url)
+            if parsed.scheme != "http" or not parsed.hostname:
+                raise ValueError(f"{variable} must use a plain HTTP isolated bridge address")
+            if not ipaddress.ip_address(parsed.hostname).is_private:
+                raise ValueError(f"{variable} must point to a private disposable canary")
+            return url
+
+        settings.tg_host = private_url("TIGERCHAIN_CANARY_GRAPH_URL")
+        settings.minio_endpoint = private_url("TIGERCHAIN_CANARY_S3_URL")
+        settings.minio_access_key = os.environ["TIGERCHAIN_CANARY_S3_ACCESS_KEY"]
+        settings.minio_secret_key = os.environ["TIGERCHAIN_CANARY_S3_SECRET_KEY"]
+        settings.minio_bucket = "tigerchain-http-20261018"
+
+        class TrackingGraph(TigerGraphClient):
+            def __init__(self, cfg):
+                super().__init__(cfg)
+                self.rows = {}
+
+            def upsert_chunk_rows(self, rows):
+                super().upsert_chunk_rows(rows)
+                for row in rows:
+                    self.rows[row.id] = row
+
+        class TrackingStore(MinioObjectStore):
+            def __init__(self, cfg):
+                super().__init__(cfg)
+                self.files = {}
+
+            def upload(self, path, key):
+                uri = super().upload(path, key)
+                # Confirm the actual object-storage round-trip, not merely method calls.
+                uploaded = self.client.get_object(Bucket=self.settings.minio_bucket, Key=key)["Body"].read()
+                assert uploaded == Path(path).read_bytes()
+                self.files[key] = uploaded
+                return uri
+
+        graph = TrackingGraph(settings)
+        store = TrackingStore(settings)
+    else:
+        graph = MemoryGraph()
+        store = MemoryObjectStore()
     retriever = TigerGraphVectorRetriever(settings, embeddings, graph)
     ctx = SimpleNamespace(
         settings=settings,
