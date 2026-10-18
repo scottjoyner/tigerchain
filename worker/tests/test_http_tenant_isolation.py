@@ -159,6 +159,7 @@ def test_real_http_jwt_upload_query_isolation_and_revocation(environment):
         assert f"ISOLATED_SYNTHETIC_{label.upper()}" in query.json()["answer"]
         assert f"ISOLATED_SYNTHETIC_{other.upper()}" not in query.json()["answer"]
         assert client.get("/builder/agents", headers=headers).status_code == 403
+        assert client.get("/agent-builder", headers=headers).status_code == 403
         assert client.post("/query", headers=headers, json={
             "question": "retrieve", "embedding_scope": "private"
         }).status_code == 403
