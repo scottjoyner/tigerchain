@@ -343,3 +343,11 @@ handles migrations automatically at startup.
   to `cpu` or choose a smaller HuggingFace model.
 - Use `make bootstrap` to re-run the TigerGraph schema deployment if the graph
   was reset or upgraded.
+
+### Real TigerGraph canary findings (Oct 17, 2026)
+
+A license-free TigerGraph Community 4.2.5 isolated instance installed the schema after updating stored numeric lists to `LIST<DOUBLE>`. The old GSQL top-K implementation did **not** compile: direct `q[i]`/vertex vector indexing is unsupported. The new `SimilarChunks` requires operator installation of `gds.vector.distance` and filters by `owner_id` inside GSQL before ranking. Run `IMPORT PACKAGE gds` and `INSTALL FUNCTION gds.**` **once** before installing `gsql/queries.gsql`, and run `gsql/schema.gsql` only on an empty disposable graph. Both GSQL files contain `$TG_GRAPH` placeholders that operators must render explicitly; nothing modifies schema during API startup.
+
+The updated query performs an exhaustive scan of the owner's compatible public vectors. This is a **research canary**, not a scalable ANN index or a demonstrated production-ready graph service. The exact backend image, license tier, vector dimensions, role scopes, and result format require acceptance against every release target. The former `TopKSimilarDocs` / `TopKSimilarPages` / `TopKSimilarChunks` procedures have been removed because they failed real compilation.
+
+The current AIStor MinIO image starts but denies all S3 operations in offline mode without a valid license; using an alternative S3-compatible storage backend in a canary does not certify MinIO. No existing fleet services were touched.
