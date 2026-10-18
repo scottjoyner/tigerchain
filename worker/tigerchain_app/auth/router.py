@@ -21,6 +21,11 @@ def register_user(
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> UserRead:
+    # Open registration combined with numeric admin IDs would allow the first
+    # registrant to acquire a reserved administrator ID. Fail closed.
+    if not settings.enable_public_registration or settings.admin_user_ids.strip():
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Self-registration is disabled")
     service = UserService(session, settings)
     user = service.create_user(payload)
     return UserRead.model_validate(user)
@@ -34,7 +39,7 @@ def login_for_access_token(
 ) -> Token:
     service = UserService(session, settings)
     user = service.authenticate_user(form_data.username, form_data.password)
-    token = create_access_token(subject=str(user.id), settings=settings)
+    token = create_access_token(subject=user.principal_id, settings=settings)
     return Token(access_token=token)
 
 

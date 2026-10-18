@@ -113,7 +113,7 @@ def pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> DocumentIngesti
     embeddings = DummyEmbeddings()
     client = DummyTigerGraphClient()
     store = DummyObjectStore()
-    settings = Settings()
+    settings = Settings(enable_private_embeddings=True)
 
     def _fake_loader(paths: Iterable[Path]) -> List[object]:
         docs: List[object] = []
@@ -135,6 +135,7 @@ def test_ingest_files_populates_metadata(tmp_path: Path, pipeline: DocumentInges
     result = pipeline.ingest_files([source], owner_id="user-1", categories=["alpha", "alpha"], embedding_scope="both")
 
     assert result.chunks, "expected at least one chunk"
+    assert result.chunks[0].to_upsert_payload()["attributes"]["owner_id"] == "user-1"
     row = result.chunks[0]
     assert "source_checksum" in row.metadata
     assert row.metadata["source_file_size"] == source.stat().st_size
@@ -154,7 +155,7 @@ def test_public_scope_skips_private_embeddings(tmp_path: Path, pipeline: Documen
     source = tmp_path / "only_public.txt"
     source.write_text("Content for public scope")
 
-    result = pipeline.ingest_files([source], embedding_scope=EmbeddingScope.PUBLIC)
+    result = pipeline.ingest_files([source], owner_id="user-1", embedding_scope=EmbeddingScope.PUBLIC)
 
     assert all(not row.private_embedding for row in result.chunks)
     store: DummyObjectStore = pipeline.object_store  # type: ignore[attr-defined]

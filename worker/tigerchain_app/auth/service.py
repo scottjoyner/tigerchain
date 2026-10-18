@@ -115,7 +115,7 @@ class DocumentService:
             model_alias=model_alias,
             object_uri=object_uri,
             http_url=http_url,
-            metadata=metadata or {},
+            extra_metadata=metadata or {},
             submission_id=submission_id,
             embedding_scope=embedding_scope,
             sharing_preference=sharing_preference,

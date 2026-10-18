@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import List, Literal, Optional
 
 from fastapi import Body, Depends, FastAPI, File, Form, HTTPException, UploadFile
@@ -17,9 +17,12 @@ from tigerchain_app.auth.models import DocumentUpload, User
 from tigerchain_app.auth.router import router as auth_router
 from tigerchain_app.agents.router import router as builder_router
 from tigerchain_app.auth.schemas import DocumentRecord
-from tigerchain_app.auth.security import get_current_active_user
+from tigerchain_app.auth.security import get_current_active_user, require_admin_user
 from tigerchain_app.auth.service import DocumentService
 from tigerchain_app.context import build_context
+from tigerchain_app.config import get_settings
+from tigerchain_app.auth.security import require_signing_key
+from tigerchain_app.ingestion.upload_validation import validate_upload_filename
 from tigerchain_app.ingestion.pipeline import IngestionResult
 from tigerchain_app.utils.logging import configure_logging, get_logger
 from tigerchain_app.utils.subjects import SubjectClassifier
@@ -31,7 +34,7 @@ subject_classifier = SubjectClassifier()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in get_settings().cors_allowed_origins.split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,7 +44,7 @@ app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(builder_router)
 
 
-@app.get("/agent-builder", response_class=HTMLResponse)
+@app.get("/agent-builder", response_class=HTMLResponse, dependencies=[Depends(require_admin_user)])
 async def agent_builder_ui() -> HTMLResponse:
     template_path = Path(__file__).resolve().parent / "tigerchain_app" / "agents" / "templates" / "agent_builder.html"
     if not template_path.exists():
@@ -86,9 +89,33 @@ class ArxivIngestRequest(BaseModel):
     categories: Optional[List[str]] = None
     model_alias: Optional[str] = None
     metadata: Optional[dict] = None
-    embedding_scope: Literal["public", "private", "both"] = "both"
-    sharing_preference: Literal["public", "private", "both"] = "both"
+    embedding_scope: Literal["public", "private", "both"] = "public"
+    sharing_preference: Literal["public", "private", "both"] = "private"
     submission_id: Optional[str] = None
+
+
+def _require_embedding_scope(scope: str) -> None:
+    if scope != "public" and not get_settings().enable_private_embeddings:
+        raise HTTPException(status_code=403, detail="Private embeddings disabled pending storage authorization review")
+
+
+def _require_private_sharing(sharing_preference: str) -> None:
+    # No shared-document ACL enforcement exists yet. Reject promises of sharing
+    # rather than persisting a misleading policy that could be treated as public.
+    if sharing_preference != "private":
+        raise HTTPException(status_code=403, detail="Shared documents are disabled pending ACL review")
+
+
+_RESERVED_INGEST_METADATA = {
+    "owner_id", "user_id", "doc_id", "embedding_scope", "sharing_preference",
+    "submission_id", "source_checksum", "source_file_size",
+}
+
+
+def _validate_user_metadata(metadata: dict) -> None:
+    reserved = sorted(_RESERVED_INGEST_METADATA.intersection(metadata))
+    if reserved:
+        raise HTTPException(status_code=400, detail="Reserved metadata fields may not be supplied")
 
 
 def _select_agent_alias(context, current_user: User, model_alias: Optional[str]) -> str:
@@ -140,7 +167,7 @@ def _persist_ingestion_records(
                 model_alias=record.model_alias,
                 object_uri=record.object_uri,
                 http_url=record.http_url,
-                metadata=record.metadata,
+                metadata=record.extra_metadata,
                 submission_id=record.submission_id or summary.submission_id,
                 private_embedding_uri=record.private_embedding_uri or summary.private_embedding_uri,
                 embedding_scope=record.embedding_scope or summary.embedding_scope,
@@ -168,6 +195,7 @@ class QueryResponse(BaseModel):
 
 @app.on_event("startup")
 async def on_startup() -> None:
+    require_signing_key(get_settings())
     build_context(force=True)
     logger.info("TigerChain service started")
 
@@ -176,7 +204,7 @@ def get_context():
     return build_context()
 
 
-@app.post("/ingest", response_model=IngestResponse)
+@app.post("/ingest", response_model=IngestResponse, dependencies=[Depends(get_current_active_user)])
 async def ingest_documents(
     files: List[UploadFile] = File(..., description="Documents to ingest"),
     category: Optional[str] = Form(default=None, description="Primary category for the upload"),
@@ -184,10 +212,10 @@ async def ingest_documents(
     model_alias: Optional[str] = Form(default=None, description="Agent/model alias to tag the document"),
     metadata: Optional[str] = Form(default=None, description="Optional JSON metadata to persist with the upload"),
     embedding_scope: Literal["public", "private", "both"] = Form(
-        default="both", description="Embedding visibility preference"
+        default="public", description="Embedding visibility preference"
     ),
     sharing_preference: Literal["public", "private", "both"] = Form(
-        default="both", description="Embedding sets that may be shared"
+        default="private", description="Embedding sets that may be shared"
     ),
     submission_id: Optional[str] = Form(
         default=None,
@@ -200,66 +228,86 @@ async def ingest_documents(
     pipeline = context.pipeline
     storage_dir = context.settings.storage_base_path
     storage_dir.mkdir(parents=True, exist_ok=True)
-    paths: List[Path] = []
+    _require_embedding_scope(embedding_scope)
+    _require_private_sharing(sharing_preference)
+    if len(files) > 8:
+        raise HTTPException(status_code=413, detail="At most 8 files may be uploaded per request")
+    if metadata is not None and len(metadata.encode("utf-8")) > 16 * 1024:
+        raise HTTPException(status_code=413, detail="Metadata exceeds 16 KiB limit")
+    with TemporaryDirectory(prefix="tigerchain-ingest-", dir=storage_dir) as staged_dir:
+        paths: List[Path] = []
+        extra_metadata: dict | None = None
+        if metadata:
+            try:
+                extra_metadata = json.loads(metadata)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(status_code=400, detail="metadata must be valid JSON") from exc
+            if not isinstance(extra_metadata, dict):
+                raise HTTPException(status_code=400, detail="metadata must be a JSON object")
+            _validate_user_metadata(extra_metadata)
 
-    extra_metadata: dict | None = None
-    if metadata:
-        try:
-            extra_metadata = json.loads(metadata)
-        except json.JSONDecodeError as exc:
-            raise HTTPException(status_code=400, detail="metadata must be valid JSON") from exc
+        seen: set[str] = set()
+        request_size = 0
+        for upload in files:
+            try:
+                name = validate_upload_filename(upload.filename)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            if name in seen:
+                raise HTTPException(status_code=400, detail="Duplicate upload filename")
+            seen.add(name)
+            temp_path = Path(staged_dir) / name
+            size = 0
+            with temp_path.open("xb") as buffer:
+                while block := await upload.read(1024 * 1024):
+                    size += len(block)
+                    request_size += len(block)
+                    if request_size > 64 * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail="Total upload exceeds 64 MiB limit")
+                    if size > 32 * 1024 * 1024:
+                        raise HTTPException(status_code=413, detail="Upload exceeds 32 MiB limit")
+                    buffer.write(block)
+            paths.append(temp_path)
 
-    for upload in files:
-        temp_path = storage_dir / upload.filename
-        with temp_path.open("wb") as buffer:
-            shutil.copyfileobj(upload.file, buffer)
-        paths.append(temp_path)
-        logger.info("Uploaded %s (%s bytes)", upload.filename, temp_path.stat().st_size)
+        preferred_agent = _select_agent_alias(context, current_user, model_alias)
+        category_values = _merge_categories(current_user, category, categories)
+        ingestion_result = pipeline.ingest_files(
+            paths,
+            owner_id=current_user.principal_id,
+            categories=category_values,
+            model_alias=preferred_agent,
+            extra_metadata=extra_metadata,
+            embedding_scope=embedding_scope,
+            submission_id=submission_id,
+        )
+        document_service = DocumentService(session)
+        response_docs = _persist_ingestion_records(
+            ingestion_result,
+            document_service=document_service,
+            current_user=current_user,
+            sharing_preference=sharing_preference,
+        )
+        return IngestResponse(ingested_chunks=len(ingestion_result.chunks), documents=response_docs, agent=preferred_agent)
 
-    preferred_agent = _select_agent_alias(context, current_user, model_alias)
-    category_values = _merge_categories(current_user, category, categories)
-
-    ingestion_result = pipeline.ingest_files(
-        paths,
-        owner_id=str(current_user.id),
-        categories=category_values,
-        model_alias=preferred_agent,
-        extra_metadata=extra_metadata,
-        embedding_scope=embedding_scope,
-        submission_id=submission_id,
-    )
-
-    document_service = DocumentService(session)
-    response_docs = _persist_ingestion_records(
-        ingestion_result,
-        document_service=document_service,
-        current_user=current_user,
-        sharing_preference=sharing_preference,
-    )
-
-    for path in paths:
-        try:
-            path.unlink(missing_ok=True)
-        except Exception:
-            logger.warning("Failed to remove temporary file %s", path)
-    return IngestResponse(ingested_chunks=len(ingestion_result.chunks), documents=response_docs, agent=preferred_agent)
-
-
-@app.post("/ingest/arxiv", response_model=IngestResponse)
+@app.post("/ingest/arxiv", response_model=IngestResponse, dependencies=[Depends(get_current_active_user)])
 async def ingest_arxiv_document(
     request: ArxivIngestRequest,
     context=Depends(get_context),
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
+    _require_embedding_scope(request.embedding_scope)
+    _require_private_sharing(request.sharing_preference)
     pipeline = context.pipeline
     preferred_agent = _select_agent_alias(context, current_user, request.model_alias)
     category_values = _merge_categories(current_user, request.category, request.categories)
     extra_metadata = dict(request.metadata) if request.metadata else None
+    if extra_metadata is not None:
+        _validate_user_metadata(extra_metadata)
 
     ingestion_result = pipeline.ingest_arxiv(
         request.identifier,
-        owner_id=str(current_user.id),
+        owner_id=current_user.principal_id,
         categories=category_values,
         model_alias=preferred_agent,
         extra_metadata=extra_metadata,
@@ -281,12 +329,13 @@ async def ingest_arxiv_document(
     )
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query", response_model=QueryResponse, dependencies=[Depends(get_current_active_user)])
 async def query_rag(
     request: QueryRequest = Body(..., description="Query payload"),
     context=Depends(get_context),
     current_user: User = Depends(get_current_active_user),
 ):
+    _require_embedding_scope(request.embedding_scope or "public")
     orchestrator = context.agent_orchestrator
     agent_names = request.agents or ([request.agent] if request.agent else None)
     if agent_names:
@@ -302,7 +351,7 @@ async def query_rag(
     subject_priorities = subject_classifier.priorities_from_categories(categories)
     shared_alias = agent_names[0] if len(agent_names) == 1 else None
     query_context = QueryContext(
-        owner_id=str(current_user.id),
+        owner_id=current_user.principal_id,
         categories=categories,
         model_alias=shared_alias,
         embedding_scope=request.embedding_scope,
@@ -327,7 +376,7 @@ async def query_rag(
     return QueryResponse(question=request.question, mode=request.mode, answer=answer, results=formatted_results)
 
 
-@app.get("/agents")
+@app.get("/agents", dependencies=[Depends(get_current_active_user)])
 async def list_agents(context=Depends(get_context)):
     settings = context.settings
     agents = []
@@ -361,4 +410,4 @@ async def list_user_documents(
 
 @app.get("/healthz")
 async def healthcheck():
-    return {"status": "ok"}
+    return {"status": "alive", "readiness": "not_checked"}

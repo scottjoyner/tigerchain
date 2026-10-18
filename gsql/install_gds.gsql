@@ -1,0 +1,4 @@
+# Run once in a new disposable TigerGraph instance before queries.gsql.
+# Importing and installing GDS functions is a privileged schema operation.
+IMPORT PACKAGE gds
+INSTALL FUNCTION gds.**

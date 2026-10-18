@@ -1,5 +1,20 @@
 # TigerChain: LangChain + TigerGraph RAG Platform
 
+> **Development-only / production NO-GO (October 2026).** This branch contains an initial security hardening slice, not a validated deployment. Do not expose the API or TigerGraph ports publicly, connect live fleet knowledge, or store confidential data until an end-to-end security review and real database integration tests pass.
+
+## Security preflight
+
+- Run with explicit `JWT_SECRET_KEY` (32+ random bytes), for example generate one using `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. Never commit an actual signing key.
+- Self-registration is **off by default**. An operator must explicitly set `ENABLE_PUBLIC_REGISTRATION=true` for disposable single-user/synthetic tests, with `ADMIN_USER_IDS` empty; do not enable self-registration in multi-user production environments.
+- Set `ADMIN_USER_IDS` to an explicit comma-separated allowlist of existing authenticated user IDs. The agent builder is denied to everyone when unset. Creating a registered user does not make that user an administrator.
+- Optionally set `CORS_ALLOWED_ORIGINS` to comma-separated exact browser origins. Wildcard CORS is disabled.
+- Public embeddings are the only supported mode by default. Do not enable `ENABLE_PRIVATE_EMBEDDINGS` until per-object storage ACLs, encryption, and leakage tests have been audited; bitwise embeddings are not encryption.
+- Docker Compose ports bind to local loopback. Production ingress and Tailnet authentication must be handled by a reviewed gateway instead of widening container port bindings.
+- Removed tracked `.env` files are **not** a complete secret-history cleanup. Rotate any keys that were ever used outside local development and assess historical exposure.
+- `/healthz` is a liveness signal only, not readiness certification. Do not route production traffic until database, storage, model, and installed-query probes exist.
+
+
+
 TigerChain bootstraps a complete retrieval-augmented generation (RAG) stack
 around **TigerGraph Enterprise**, **MinIO** object storage, and a modular
 LangChain application layer. Documents uploaded as PDFs/Markdown/Plain text are
@@ -329,3 +344,24 @@ handles migrations automatically at startup.
   to `cpu` or choose a smaller HuggingFace model.
 - Use `make bootstrap` to re-run the TigerGraph schema deployment if the graph
   was reset or upgraded.
+
+### Real TigerGraph canary findings (Oct 17, 2026)
+
+A license-free TigerGraph Community 4.2.5 isolated instance installed the schema after updating stored numeric lists to `LIST<DOUBLE>`. The old GSQL top-K implementation did **not** compile: direct `q[i]`/vertex vector indexing is unsupported. The new `SimilarChunks` requires operator installation of `gds.vector.distance` and filters by `owner_id` inside GSQL before ranking. Run `IMPORT PACKAGE gds` and `INSTALL FUNCTION gds.**` **once** before installing `gsql/queries.gsql`, and run `gsql/schema.gsql` only on an empty disposable graph. Both GSQL files contain `$TG_GRAPH` placeholders that operators must render explicitly; nothing modifies schema during API startup.
+
+The updated query performs an exhaustive scan of the owner's compatible public vectors. This is a **research canary**, not a scalable ANN index or a demonstrated production-ready graph service. The exact backend image, license tier, vector dimensions, role scopes, and result format require acceptance against every release target. The former `TopKSimilarDocs` / `TopKSimilarPages` / `TopKSimilarChunks` procedures have been removed because they failed real compilation.
+
+The current AIStor MinIO image starts but denies all S3 operations in offline mode without a valid license; using an alternative S3-compatible storage backend in a canary does not certify MinIO. No existing fleet services were touched.
+
+
+### Stable principal identifiers (migration gate)
+
+The API now signs JWT `sub` claims with a per-account random 128-bit
+`principal_id`, not the recyclable SQLite `users.id`. Graph ownership
+also uses that principal ID. Numeric JWTs are **intentionally invalidated**.
+The `users.principal_id` column requires a reviewed versioned database
+migration before applying this branch to existing users; SQLModel
+`create_all()` does **not** migrate existing tables. Existing TigerGraph rows
+with numeric owners are intentionally inaccessible pending an audited
+old-to-new owner mapping and rollback plan. Never deploy or backfill real user
+data without a separate migration acceptance.

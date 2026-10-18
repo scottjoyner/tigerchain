@@ -4,6 +4,7 @@ import json
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+from pydantic.v1 import PrivateAttr
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Set
 
@@ -28,7 +29,14 @@ class RetrievalContext:
 
 
 class TigerGraphVectorRetriever(BaseRetriever):
-    """LangChain retriever backed by TigerGraph vector similarity query."""
+    """LangChain retriever backed by owner-scoped TigerGraph similarity queries."""
+
+    # BaseRetriever is a Pydantic model: runtime collaborators must be private
+    # attributes, not unregistered instance fields (which fail on construction).
+    _settings: Settings = PrivateAttr()
+    _embeddings: Embeddings = PrivateAttr()
+    _tigergraph_client: TigerGraphClient = PrivateAttr()
+    _context: ContextVar[RetrievalContext | None] = PrivateAttr()
 
     def __init__(
         self,
@@ -37,23 +45,26 @@ class TigerGraphVectorRetriever(BaseRetriever):
         tigergraph_client: TigerGraphClient,
     ) -> None:
         super().__init__()
-        self.settings = settings
-        self.embeddings = embeddings
-        self.tigergraph_client = tigergraph_client
-        self._context: ContextVar[RetrievalContext | None] = ContextVar(
+        self._settings = settings
+        self._embeddings = embeddings
+        self._tigergraph_client = tigergraph_client
+        self._context = ContextVar(
             f"tg_retriever_filters_{id(self)}",
             default=None,
         )
 
     def _get_relevant_documents(self, query: str) -> List[Document]:  # type: ignore[override]
         logger.debug("Embedding query for retrieval")
+        context = self._context.get()
+        if context is None or not context.owner_id:
+            raise ValueError("Retrieval requires an authenticated owner ID")
         embedding_mode = self._resolve_embedding_mode()
         embedding = self._embed_query(query, embedding_mode)
         fetch_count = self._candidate_pool_size()
-        response = self.tigergraph_client.top_k_similar(embedding, fetch_count, embedding_mode)
+        response = self._tigergraph_client.top_k_similar(embedding, fetch_count, embedding_mode, owner_id=str(context.owner_id))
         candidates = self._parse_response(response)
         reranked = self._rerank_documents(embedding, candidates, embedding_mode)
-        top_k = max(self.settings.top_k, 0)
+        top_k = max(self._settings.top_k, 0)
         if top_k:
             return reranked[:top_k]
         return reranked
@@ -75,8 +86,8 @@ class TigerGraphVectorRetriever(BaseRetriever):
     def _parse_response(self, payload: dict) -> List[Document]:
         results = []
         for result in payload.get("results", []):
-            for entries in result.get("Start", []):
-                attributes = entries.get("attributes", {})
+            for entries in result.get("Ranked", []):
+                attributes = entries.get("attributes", entries)
                 score = entries.get("score")
                 if score is None:
                     score = attributes.get("score")
@@ -133,8 +144,8 @@ class TigerGraphVectorRetriever(BaseRetriever):
         return filtered
 
     def _candidate_pool_size(self) -> int:
-        base = max(self.settings.top_k, 1)
-        factor = max(self.settings.retrieval_overfetch_factor, 1.0)
+        base = max(self._settings.top_k, 1)
+        factor = max(self._settings.retrieval_overfetch_factor, 1.0)
         return max(int(base * factor), base)
 
     def _rerank_documents(
@@ -178,19 +189,19 @@ class TigerGraphVectorRetriever(BaseRetriever):
         return [doc for _, doc in scored]
 
     def _embed_documents(self, texts: List[str], mode: str) -> List[List[float]]:
-        if mode == "private" and hasattr(self.embeddings, "embed_documents_with_mode"):
+        if mode == "private" and hasattr(self._embeddings, "embed_documents_with_mode"):
             return [
                 [float(value) for value in vector]
-                for vector in self.embeddings.embed_documents_with_mode(texts, mode)  # type: ignore[attr-defined]
+                for vector in self._embeddings.embed_documents_with_mode(texts, mode)  # type: ignore[attr-defined]
             ]
-        if mode == "private" and hasattr(self.embeddings, "embed_documents_private"):
+        if mode == "private" and hasattr(self._embeddings, "embed_documents_private"):
             return [
                 [float(value) for value in vector]
-                for vector in self.embeddings.embed_documents_private(texts)  # type: ignore[attr-defined]
+                for vector in self._embeddings.embed_documents_private(texts)  # type: ignore[attr-defined]
             ]
         return [
             [float(value) for value in vector]
-            for vector in self.embeddings.embed_documents(texts)
+            for vector in self._embeddings.embed_documents(texts)
         ]
 
     @staticmethod
@@ -208,10 +219,10 @@ class TigerGraphVectorRetriever(BaseRetriever):
         return "public"
 
     def _embed_query(self, query: str, mode: str):
-        if mode == "private" and hasattr(self.embeddings, "embed_query_with_mode"):
-            vector = self.embeddings.embed_query_with_mode(query, mode)  # type: ignore[assignment]
+        if mode == "private" and hasattr(self._embeddings, "embed_query_with_mode"):
+            vector = self._embeddings.embed_query_with_mode(query, mode)  # type: ignore[assignment]
             return [float(value) for value in vector]
-        if mode == "private" and hasattr(self.embeddings, "embed_query_private"):
-            vector = self.embeddings.embed_query_private(query)  # type: ignore[assignment]
+        if mode == "private" and hasattr(self._embeddings, "embed_query_private"):
+            vector = self._embeddings.embed_query_private(query)  # type: ignore[assignment]
             return [float(value) for value in vector]
-        return self.embeddings.embed_query(query)
+        return self._embeddings.embed_query(query)

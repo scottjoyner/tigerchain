@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import uuid
 from typing import List, Optional
 
 from sqlalchemy import Column
@@ -14,6 +15,9 @@ class User(SQLModel, table=True):
     __tablename__ = "users"
 
     id: Optional[int] = Field(default=None, primary_key=True)
+    # Stable random ID for authenticated ownership, distinct from SQL row ID.
+    # Existing databases require an audited ALTER TABLE/backfill migration.
+    principal_id: str = Field(default_factory=lambda: uuid.uuid4().hex, unique=True, index=True)
     email: str = Field(index=True, unique=True)
     full_name: Optional[str] = Field(default=None)
     hashed_password: str
@@ -38,7 +42,7 @@ class DocumentUpload(SQLModel, table=True):
     model_alias: Optional[str] = Field(default=None, index=True)
     object_uri: Optional[str] = Field(default=None)
     http_url: Optional[str] = Field(default=None)
-    metadata: dict = Field(default_factory=dict, sa_column=Column(JSON))
+    extra_metadata: dict = Field(default_factory=dict, sa_column=Column("metadata", JSON))
     submission_id: Optional[str] = Field(default=None, index=True)
     embedding_scope: Optional[str] = Field(default=None, index=True)
     sharing_preference: Optional[str] = Field(default=None, index=True)
