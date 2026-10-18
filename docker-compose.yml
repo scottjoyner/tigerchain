@@ -1,6 +1,6 @@
 services:
   tigergraph:
-    image: tigergraph/tigergraph:latest
+    image: tigergraph/community:4.2.5
     user: "0" # <— run boot script as root
     # Start TG services and wait for REST++ so healthcheck passes
     command: ["/bin/bash", "-lc", "/opt/scripts/tg_boot.sh"]
