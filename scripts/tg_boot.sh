@@ -1,31 +1,37 @@
 #!/usr/bin/env bash
+# TigerGraph Community Edition container boot. No implicit schema or license changes.
 set -euo pipefail
 
-PASS="${PASSWORD:-tigergraph}"
 TG_HOME="/home/tigergraph"
 GADMIN="${TG_HOME}/tigergraph/app/cmd/gadmin"
-TG_CFG="${TG_HOME}/tigergraph/data/configs/tg.cfg"   # <- use data/configs
+TG_CFG="${TG_HOME}/tigergraph/data/configs/tg.cfg"
 
-# Ensure OS password (root op; idempotent)
-echo "tigergraph:${PASS}" | chpasswd || true
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "[tigerchain] expected root bootstrap to switch to tigergraph service user" >&2
+  exit 1
+fi
+if [[ ! -e "${TG_CFG}" ]]; then
+  echo "[tigerchain] missing TigerGraph config: persistent data volume not initialized" >&2
+  exit 1
+fi
 
-# Ensure tigergraph has ~/.tg.cfg pointing to the real config
-ln -sf "${TG_CFG}" "${TG_HOME}/.tg.cfg"
-chown -h tigergraph:tigergraph "${TG_HOME}/.tg.cfg"
+# Startup in an isolated instance only. Startup is intentionally separate
+# from GSQL schema/install; never change a production graph as a side effect.
+su - tigergraph -c "${GADMIN} start infra"
+su - tigergraph -c "${GADMIN} start all"
 
-# Start infra first, then all (idempotent)
-su - tigergraph -c "${GADMIN} start infra" || true
-su - tigergraph -c "${GADMIN} start all" || true
-sleep 5
-
-# Wait for REST++ to respond
-for i in $(seq 1 120); do
-  curl -fsS http://localhost:9000/echo >/dev/null 2>&1 && { echo "[tg_boot] RESTPP is up."; break; }
+ready=0
+for _ in $(seq 1 120); do
+  if curl -fsS --max-time 4 http://127.0.0.1:9000/echo >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
   sleep 2
 done
+if [[ "${ready}" != "1" ]]; then
+  echo "[tigerchain] REST++ never reached liveness within bounded startup window" >&2
+  exit 1
+fi
 
-# Show status for visibility
-su - tigergraph -c "${GADMIN} status" || true
-
-# Keep container alive
-tail -f /home/tigergraph/tigergraph*/log/* 2>/dev/null || exec sleep infinity
+echo "[tigerchain] REST++ alive; query/schema readiness must be tested separately"
+exec sleep infinity
