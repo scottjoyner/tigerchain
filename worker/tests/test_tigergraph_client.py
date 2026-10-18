@@ -1,6 +1,7 @@
 """Client query contract requiring real project dependencies."""
 import pytest
 from tigerchain_app.ingestion.tigergraph import TigerGraphClient
+from tigerchain_app.config import Settings
 
 def test_tigergraph_query_parameter_names_and_owner(monkeypatch):
     import tigerchain_app.ingestion.tigergraph as module
