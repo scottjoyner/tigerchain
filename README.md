@@ -1,5 +1,19 @@
 # TigerChain: LangChain + TigerGraph RAG Platform
 
+> **Development-only / production NO-GO (October 2026).** This branch contains an initial security hardening slice, not a validated deployment. Do not expose the API or TigerGraph ports publicly, connect live fleet knowledge, or store confidential data until an end-to-end security review and real database integration tests pass.
+
+## Security preflight
+
+- Run with explicit `JWT_SECRET_KEY` (32+ random bytes), for example generate one using `python -c 'import secrets; print(secrets.token_urlsafe(48))'`. Never commit an actual signing key.
+- Set `ADMIN_USER_IDS` to an explicit comma-separated allowlist of existing authenticated user IDs. The agent builder is denied to everyone when unset. Creating a registered user does not make that user an administrator.
+- Optionally set `CORS_ALLOWED_ORIGINS` to comma-separated exact browser origins. Wildcard CORS is disabled.
+- Public embeddings are the only supported mode by default. Do not enable `ENABLE_PRIVATE_EMBEDDINGS` until per-object storage ACLs, encryption, and leakage tests have been audited; bitwise embeddings are not encryption.
+- Docker Compose ports bind to local loopback. Production ingress and Tailnet authentication must be handled by a reviewed gateway instead of widening container port bindings.
+- Removed tracked `.env` files are **not** a complete secret-history cleanup. Rotate any keys that were ever used outside local development and assess historical exposure.
+- `/healthz` is a liveness signal only, not readiness certification. Do not route production traffic until database, storage, model, and installed-query probes exist.
+
+
+
 TigerChain bootstraps a complete retrieval-augmented generation (RAG) stack
 around **TigerGraph Enterprise**, **MinIO** object storage, and a modular
 LangChain application layer. Documents uploaded as PDFs/Markdown/Plain text are

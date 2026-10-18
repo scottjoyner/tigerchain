@@ -9,8 +9,8 @@ services:
       - PASSWORD=${TG_PASSWORD}
       - TG_PASSPHRASE=${TG_PASSWORD}
     ports:
-      - "${TG_REST_PORT}:9000"     # RESTPP
-      - "${TG_GSQL_PORT}:14240"    # GSQL/Studio
+      - "127.0.0.1:${TG_REST_PORT}:9000"     # RESTPP
+      - "127.0.0.1:${TG_GSQL_PORT}:14240"    # GSQL/Studio
     volumes:
       - tgdata:/home/tigergraph/data
       - ./gsql:/opt/gsql
@@ -33,8 +33,8 @@ services:
       - MINIO_ROOT_USER=${MINIO_ROOT_USER}
       - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
     ports:
-      - "${MINIO_PORT}:9000"
-      - "${MINIO_CONSOLE_PORT}:9001"
+      - "127.0.0.1:${MINIO_PORT}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT}:9001"
     volumes:
       - miniodata:/data
     healthcheck:
@@ -62,8 +62,8 @@ services:
 
   rag-api:
     build:
-      context: .
-      dockerfile: worker/Dockerfile
+      context: ./worker
+      dockerfile: Dockerfile
     environment:
       - TG_HOST=tigergraph
       - TG_REST_PORT=9000
@@ -82,27 +82,22 @@ services:
       - MINIO_BUCKET=${MINIO_BUCKET}
       # Optional LLM knobs; keep only what you actually use
       - EMBED_DEVICE=${EMBED_DEVICE}
-      - EMBED_BATCH_SIZE=${EMBED_BATCH_SIZE:-32}
-      - CHUNK_SIZE=${CHUNK_SIZE:-900}
-      - TOP_K=${TOP_K:-5}
-      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
-      - LLM_MODEL=${LLM_MODEL:-llama2}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.1}
+      - EMBED_BATCH_SIZE=${EMBED_BATCH_SIZE}
+      - CHUNK_SIZE=${CHUNK_SIZE}
+      - TOP_K=${TOP_K}
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - LLM_MODEL=${LLM_MODEL}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_API_BASE=${OPENAI_API_BASE}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
       - VLLM_API_BASE=${VLLM_API_BASE}
       - STORAGE_BASE_PATH=/tmp/tigerchain
       - API_PORT=${API_PORT}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be explicitly configured}
-      - ADMIN_USER_IDS=${ADMIN_USER_IDS:-}
-      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-}
-      - DATABASE_URL=sqlite:////data/tigerchain.db
     volumes:
-      - ./worker/sample_docs:/app/worker/sample_docs:ro
-      - metadata:/data
+      - ./worker/sample_docs:/app/sample_docs:ro
     ports:
-      - "${API_PORT}:8000"
+      - "127.0.0.1:${API_PORT}:8000"
     depends_on:
       tigergraph:
         condition: service_started                # don't block on "healthy"; our boot script handles it
@@ -117,7 +112,7 @@ services:
       - MODEL_NAME=${VLLM_MODEL}
     command: ["--model", "${VLLM_MODEL}"]
     ports:
-      - "${VLLM_PORT}:8000"
+      - "127.0.0.1:${VLLM_PORT}:8000"
     volumes:
       - vllm-cache:/root/.cache/huggingface
     deploy:
@@ -131,13 +126,12 @@ services:
     image: ollama/ollama:latest
     profiles: ["llm"]
     ports:
-      - "${OLLAMA_PORT}:11434"
+      - "127.0.0.1:${OLLAMA_PORT}:11434"
     volumes:
       - ollama-data:/root/.ollama
     networks: [tgnet]
 
 volumes:
-  metadata:
   tgdata:
   miniodata:
   vllm-cache:
